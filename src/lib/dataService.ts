@@ -11,7 +11,7 @@ import {
   type Settings,
 } from '../../shared/types'
 import { api, getErrorMessage, isUnauthorizedError } from './api'
-import { clearCachedAdminData, readCachedAdminDataEntry, writeCachedAdminData } from './adminDataCache'
+import { readCachedAdminDataEntry, writeCachedAdminData } from './adminDataCache'
 import {
   adminDataToPublicData,
   getDataVersion,
@@ -107,7 +107,13 @@ export async function refreshPublicData(progressive = false): Promise<PublicData
     return null
   }
 
-  const cached = !isLoggedIn() ? await readCachedPublicDataEntry() : null
+  if (isLoggedIn()) {
+    // “类 onshow”自动取数在这里统一按登录态分流：已登录直接取 /admin/data，未登录取 /public/data。
+    await refreshLoggedInData(false)
+    return get(publicStore).data
+  }
+
+  const cached = await readCachedPublicDataEntry()
   if (cached?.data) {
     applyPublicData(cached.data, cached.version)
     hooks.onLocalSnapshotRestored()
@@ -128,40 +134,13 @@ export async function refreshPublicData(progressive = false): Promise<PublicData
     }
 
     const data = applyPublicData(await api.public.getData(false), undefined, progressive)
-    if (!isLoggedIn()) {
-      await writeCachedPublicData(data, currentDataVersion)
-    }
+    await writeCachedPublicData(data, currentDataVersion)
     return data
   } catch (error) {
     if (isPublicModeForbidden(error)) {
       const forbiddenConfig = siteConfigFromForbiddenError(error) ?? {
         site_title: config?.site_title ?? 'CF-Navs',
         public_mode: false,
-      }
-
-      if (isLoggedIn()) {
-        try {
-          const data = applyPublicData(await api.public.getData(true), undefined, progressive)
-          configStore.setData({
-            site_title: data.settings.site_title || forbiddenConfig.site_title,
-            public_mode: false,
-          })
-          return data
-        } catch (authError) {
-          if (isUnauthorizedError(authError)) {
-            authStore.setSession(null)
-            adminStore.reset()
-            await clearCachedAdminData()
-            publicStore.reset()
-            configStore.setData(forbiddenConfig)
-            return null
-          }
-
-          if (!isPublicModeForbidden(authError)) {
-            hooks.onRootError(getErrorMessage(authError), authError)
-            return null
-          }
-        }
       }
 
       await clearCachedPublicData()

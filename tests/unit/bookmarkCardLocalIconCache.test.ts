@@ -26,7 +26,9 @@ function setupCacheStorage(): CacheEntries {
   })
   vi.stubGlobal('URL', testUrl)
   vi.stubGlobal('IntersectionObserver', undefined)
-  window.localStorage.clear()
+  if (typeof window.localStorage !== 'undefined') {
+    window.localStorage.clear()
+  }
   return entries
 }
 

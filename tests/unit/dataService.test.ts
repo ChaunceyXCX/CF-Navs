@@ -233,25 +233,17 @@ describe('dataService.refreshPublicData', () => {
     expect(getCurrentDataVersion()).toBe('new')
   })
 
-  it('clears admin snapshot when private-mode authenticated public fetch returns unauthorized', async () => {
+  it('uses the admin data path when logged in', async () => {
     authStore.setSession(session)
     adminStore.replaceData(makeAdminData())
-    const forbidden = new ApiError('private mode', {
-      code: ErrCode.FORBIDDEN,
-      data: { site_title: 'Private CF-Navs', public_mode: false },
-    })
-    const unauthorized = new ApiError('unauthorized', { status: 401, code: ErrCode.UNAUTHORIZED })
-    api.public.getData
-      .mockRejectedValueOnce(forbidden)
-      .mockRejectedValueOnce(unauthorized)
+    adminCache.readCachedAdminDataEntry.mockResolvedValue({ data: makeAdminData(), version: 'v1' })
+    api.data.version.mockResolvedValue({ version: 'v1', site_title: 'CF-Navs', public_mode: true })
 
     const result = await refreshPublicData()
 
-    expect(result).toBeNull()
-    expect(adminCache.clearCachedAdminData).toHaveBeenCalledOnce()
-    expect(get(authStore).session).toBeNull()
-    expect(get(adminStore).data.settings).toBeNull()
-    expect(get(configStore).data).toEqual({ site_title: 'Private CF-Navs', public_mode: false })
+    expect(result?.categories).toHaveLength(1)
+    expect(api.public.getData).not.toHaveBeenCalled()
+    expect(dataHooks.onLocalSnapshotRestored).toHaveBeenCalledOnce()
   })
 
   it('resets public store without fetching when private mode and logged out', async () => {
