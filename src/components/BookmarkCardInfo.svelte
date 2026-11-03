@@ -1,3 +1,5 @@
+<svelte:options runes />
+
 <script lang="ts">
   import type { DescriptionDisplayMode, PublicBookmark } from '../../shared/types'
   import BookmarkIcon from './BookmarkIcon.svelte'
@@ -5,24 +7,49 @@
 
   type AsyncVoid<T = void> = T | Promise<T>
 
-  export let bookmark: PublicBookmark
-  export let openInNewTab = true
-  export let sortMode = false
-  export let cardLinkStyle = ''
-  export let showDescription = true
-  export let descriptionMode: DescriptionDisplayMode = showDescription ? 'always' : 'hidden'
-  export let tooltipText = ''
-  export let iconUrl = ''
-  export let iconText = ''
-  export let infoIconSize = 60
-  export let infoIconStyle = ''
-  export let hasCustomIconBackground = false
-  export let preview = false
-  export let themeOverride: 'light' | 'dark' | null = null
-  export let onLinkClick: ((event: MouseEvent) => AsyncVoid) | undefined = undefined
-  export let onContextMenu: ((event: MouseEvent) => AsyncVoid) | undefined = undefined
-  export let onIconError: (() => AsyncVoid) | undefined = undefined
-  export let onIconLoad: (() => AsyncVoid) | undefined = undefined
+  interface Props {
+    bookmark: PublicBookmark
+    openInNewTab?: boolean
+    sortMode?: boolean
+    cardLinkStyle?: string
+    showDescription?: boolean
+    descriptionMode?: DescriptionDisplayMode
+    tooltipText?: string
+    iconUrl?: string
+    iconText?: string
+    infoIconSize?: number
+    infoIconStyle?: string
+    hasCustomIconBackground?: boolean
+    preview?: boolean
+    themeOverride?: 'light' | 'dark' | null
+    onLinkClick?: (event: MouseEvent) => AsyncVoid
+    onContextMenu?: (event: MouseEvent) => AsyncVoid
+    onIconError?: () => AsyncVoid
+    onIconLoad?: () => AsyncVoid
+    sourceCategoryTitle?: string
+  }
+
+  let {
+    bookmark,
+    openInNewTab = true,
+    sortMode = false,
+    cardLinkStyle = '',
+    showDescription = true,
+    descriptionMode = showDescription ? 'always' : 'hidden',
+    tooltipText = '',
+    iconUrl = '',
+    iconText = '',
+    infoIconSize = 60,
+    infoIconStyle = '',
+    hasCustomIconBackground = false,
+    preview = false,
+    themeOverride = null,
+    onLinkClick,
+    onContextMenu,
+    onIconError,
+    onIconLoad,
+    sourceCategoryTitle = '',
+  }: Props = $props()
 
   function handleLinkClick(event: MouseEvent) {
     void onLinkClick?.(event)
@@ -47,8 +74,8 @@
   title={showDescription && descriptionMode === 'hover' ? tooltipText : undefined}
   aria-label={showDescription && descriptionMode === 'hover' ? tooltipText : undefined}
   data-tooltip={showDescription && descriptionMode === 'hover' ? tooltipText : ''}
-  on:click={handleLinkClick}
-  on:contextmenu={handleContextMenu}
+  onclick={handleLinkClick}
+  oncontextmenu={handleContextMenu}
 >
   <BookmarkIcon
     title={bookmark.title}
@@ -65,6 +92,9 @@
 
   <div class="bookmark-text">
     <h3 class="bookmark-title">{bookmark.title}</h3>
+    {#if sourceCategoryTitle}
+      <span class="bookmark-source">{sourceCategoryTitle}</span>
+    {/if}
       {#if showDescription && descriptionMode === 'always' && bookmark.description}
       <p class="bookmark-description">{bookmark.description}</p>
     {/if}
@@ -86,9 +116,8 @@
       inset 0 1px 0 rgba(255, 255, 255, 0.55),
       inset 0 -1px 0 rgba(255, 255, 255, 0.1),
       0 4px 14px rgba(15, 23, 42, 0.08);
-    transition:
-      transform var(--transition-fast),
-      border-color var(--transition-fast);
+    /* Moving the hover target makes bottom-edge hit tests alternate and flickers the glass/tooltip. */
+    transition: border-color var(--transition-fast);
   }
 
   .bookmark-card:focus-visible {
@@ -97,7 +126,6 @@
     box-shadow:
       0 0 0 3px rgba(56, 189, 248, 0.25),
       0 8px 24px rgba(15, 23, 42, 0.16) !important;
-    transform: translateY(-2px);
   }
 
   .bookmark-card-info {
@@ -117,7 +145,6 @@
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.65),
       0 8px 20px rgba(15, 23, 42, 0.12);
-    transform: translateY(-1px);
   }
 
   .bookmark-card-info .bookmark-text {
@@ -229,6 +256,19 @@
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     box-shadow: 0 8px 22px color-mix(in srgb, var(--home-accent-color) 16%, transparent);
+  }
+
+  .bookmark-source {
+    display: block;
+    margin-top: 1px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--card-description-color, currentColor);
+    font-size: 0.62rem;
+    font-weight: 600;
+    opacity: 0.66;
   }
 
 </style>

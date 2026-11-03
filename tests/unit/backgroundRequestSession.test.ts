@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ErrCode } from '../../shared/types'
-import { api, getAuthToken, setApiBaseUrl, setStoredAuthSession } from '../../src/lib/api'
+import { api, setApiBaseUrl } from '../../src/lib/api'
+import { getAuthToken, setStoredAuthSession } from '../../src/lib/authSession'
 
 function stubBrowserStorage() {
   const store = new Map<string, string>()
@@ -61,7 +62,7 @@ describe('background request session handling', () => {
   )
 
   it('does not leak the option into the fetch init', async () => {
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       new Response(JSON.stringify({ code: 0, msg: 'ok', data: { title: 'Example', final_url: 'https://example.com/' } }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
@@ -75,4 +76,26 @@ describe('background request session handling', () => {
     expect(init).not.toHaveProperty('keepSessionOnUnauthorized')
     expect(init).not.toHaveProperty('auth')
   })
+  it.each(['http', 'envelope'] as const)('keeps a newer session when an old request returns a %s 401', async (mode) => {
+    let respond!: (response: Response) => void
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => { respond = resolve })))
+    const request = api.admin.getData()
+    const rejected = expect(request).rejects.toThrow()
+    setStoredAuthSession({ token: 'replacement-token', expires_at: Date.now() + 600_000, username: 'admin' })
+    respond(unauthorizedResponse(mode))
+    await rejected
+    expect(getAuthToken()).toBe('replacement-token')
+  })
+
+  it.each([
+    ['admin refresh', () => api.admin.getData({ keepSessionOnUnauthorized: true })],
+    ['public fallback', () => api.public.getData(true)],
+    ['version refresh', () => api.data.version(true)],
+    ['optional icon grant', () => api.auth.iconAccess()],
+  ] as const)('leaves %s unauthorized handling to its owner', async (_name, run) => {
+    vi.stubGlobal('fetch', vi.fn(async () => unauthorizedResponse('http')))
+    await expect(run()).rejects.toThrow()
+    expect(getAuthToken()).toBe('session-token')
+  })
+
 })

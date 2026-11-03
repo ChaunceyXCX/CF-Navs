@@ -1,11 +1,11 @@
-import { Hono } from 'hono'
+import { Hono, type MiddlewareHandler } from 'hono'
 import type { IconAccessResp } from '../../shared/types'
 import { ErrCode } from '../../shared/types'
 import {
   getBookmarkIconData,
-  getPublicCategoryIds,
-  isBookmarkIconAnonymouslyVisible,
-  listCategories,
+  getCategory,
+  isBookmarkIconAnonymouslyVisibleById,
+  isCategoryIconAnonymouslyVisible,
   setIconBlob,
 } from '../lib/db'
 import {
@@ -31,11 +31,15 @@ import {
   transientIconErrorResponse,
 } from '../lib/iconResponses'
 import { createIconAccessGrant, verifyIconAccessGrant } from '../lib/iconSignature'
-import { getJwtSecret } from '../lib/jwt'
+import { getJwtSecret, refreshJwtSecretAfterVerifyFailure } from '../lib/jwt'
+import { decodeVersionedIcon } from '../lib/iconRevision'
 import { fail, ok } from '../lib/response'
 import type { HonoEnv } from '../types'
 
+// 公开：图标代理（Iconify 预览、书签/分类对象图标，匿名可见性闸门在各自处理器内）。
 export const iconRoutes = new Hono<HonoEnv>()
+// 受保护：签发私密图标授权、Iconify 搜索。由 worker/index.ts 挂进受保护子应用。
+export const iconProtectedRoutes = new Hono<HonoEnv>()
 function normalizeCategoryIconUrl(value: string): string | null {
   const icon = value.trim()
   if (!icon) return null
@@ -48,8 +52,8 @@ function normalizeCategoryIconUrl(value: string): string | null {
 
 // 后台预览私密对象图标用的短期授权。签名密钥复用 settings.jwt_secret，因此改密码
 // （rotateJwtSecret）会顺带作废全部已签发授权。该端点在 worker/index.ts 上挂
-// authRequired，只有登录态能取到。
-iconRoutes.get('/icon-access', async (c) => {
+// 受保护子应用的 authRequired，只有登录态能取到。
+iconProtectedRoutes.get('/icon-access', async (c) => {
   const grant = await createIconAccessGrant(await getJwtSecret(c.env.DB))
   const data: IconAccessResp = { key: grant.grant, expires_at: grant.expires_at }
   const response = c.json(ok(data))
@@ -57,7 +61,7 @@ iconRoutes.get('/icon-access', async (c) => {
   return response
 })
 
-iconRoutes.get('/iconify-search', async (c) => {
+iconProtectedRoutes.get('/iconify-search', async (c) => {
   const query = normalizeIconifySearchQuery(c.req.query('query') ?? '')
   if (!query) {
     return c.json(fail(ErrCode.BAD_REQUEST, 'invalid iconify query'), 400)
@@ -111,8 +115,8 @@ iconRoutes.get('/iconify/:prefix/:name', async (c) => {
 //
 // 判定必须发生在 edge cache 命中查询**之前**：命中查询用的键不含身份，先查就会把之前
 // 写给匿名访客的兜底图标返回给管理员；而私密响应也绝不能写回那个共享键。因此授权路径
-// 全程 cacheKey 为 null（不读不写 edge cache）并带 `private, no-store`，同时挡住
-// Service Worker 对 `/api/category-icon/*` 的 cache-first 写入。
+// 全程 cacheKey 为 null（不读不写 edge cache）并带 `private, no-store`；对象代理客户端
+// 统一 no-store，Service Worker 不接管这些同源 API。
 type IconAccessMode = {
   authorized: boolean
   cacheKey: Request | null
@@ -136,7 +140,13 @@ async function resolveIconAccess(
   // 非法或过期的 key 一律退回匿名路径。缓存键归一化会丢掉 `key`，所以伪造的 key 既不会
   // 让缓存条目碎片化，也拿不到与匿名不同的响应。
   if (!key) return ANONYMOUS_ACCESS(c.req.raw)
-  if (!(await verifyIconAccessGrant(await getJwtSecret(c.env.DB), key))) return ANONYMOUS_ACCESS(c.req.raw)
+  let granted = await verifyIconAccessGrant(await getJwtSecret(c.env.DB), key)
+  if (!granted) {
+    // 与会话校验相同：另一 isolate 轮换密钥后本地缓存可能过期，按需重读一次。
+    const refreshed = await refreshJwtSecretAfterVerifyFailure(c.env.DB)
+    if (refreshed) granted = await verifyIconAccessGrant(refreshed, key)
+  }
+  if (!granted) return ANONYMOUS_ACCESS(c.req.raw)
 
   return {
     authorized: true,
@@ -146,14 +156,37 @@ async function resolveIconAccess(
   }
 }
 
-iconRoutes.get('/icon/:id', async (c) => {
+// Only object icons need revocable client caching. Handlers clone the public response into
+// caches.default before this boundary; never return its policy (including a Zone TTL override)
+// to the browser. Hono's header() wraps finalized responses without copying their body.
+const objectIconClientCache: MiddlewareHandler<HonoEnv> = async (c, next) => {
+  await next()
+  c.header('Cache-Control', c.res.headers.get('Cache-Control')?.includes('private')
+    ? ICON_PRIVATE_CACHE
+    : ICON_FAILURE_CACHE)
+}
+
+iconRoutes.get('/icon/:id', objectIconClientCache, async (c) => {
   const id = Number(c.req.param('id'))
   if (!Number.isInteger(id) || id <= 0) {
     return errorIconResponse('invalid id', 400)
   }
 
+  // 授权状态要在 catch 里也能用：带合法 key 的请求即使走进异常分支，响应也必须是
+  // `private, no-store`，绝不能被浏览器 HTTP 缓存当成公开图标留下。
+  let authorized = false
   try {
-    const { authorized, cacheKey, successCache, fallbackCache } = await resolveIconAccess(c)
+    const access = await resolveIconAccess(c)
+    const cacheKey = access.cacheKey
+    const successCache = access.successCache
+    const fallbackCache = access.fallbackCache
+    authorized = access.authorized
+    if (!authorized && !await isBookmarkIconAnonymouslyVisibleById(c.env.DB, id)) {
+      // 不可见/未知对象的兜底不能写入共享 cache：公开→私密、分类移动和陈旧 orphan
+      // 都必须在下一次请求重新经过权威可见性闸门。
+      return fallbackIconResponse('', '', ICON_FAILURE_CACHE)
+    }
+
     if (cacheKey) {
       const cached = await getCachedResponse(cacheKey)
       if (cached) {
@@ -161,25 +194,17 @@ iconRoutes.get('/icon/:id', async (c) => {
       }
     }
 
-    const bookmark = await getBookmarkIconData(c.env.DB, id)
-    // 端点匿名可访问：先判定这条书签对访客是否可见。私密书签、以及挂在私密分类（或其
-    // 后代）下的公开书签，一律返回不含标题与域名的兜底图标，表现与「id 不存在」完全
-    // 一致，不泄露存在性或内容线索（PROB-20 方案 1）。带合法授权时跳过该判定。
+    let bookmark = await getBookmarkIconData(c.env.DB, id)
     if (!bookmark) {
-      return cachedFallbackIconResponse(c, cacheKey, '', '', fallbackCache)
-    }
-
-    if (!authorized) {
-      const visibleCategoryIds = getPublicCategoryIds(await listCategories(c.env.DB))
-      if (!isBookmarkIconAnonymouslyVisible(bookmark, visibleCategoryIds)) {
-        return cachedFallbackIconResponse(c, cacheKey, '', '', fallbackCache)
-      }
+      return fallbackIconResponse('', '', fallbackCache)
     }
 
     if (bookmark.icon_blob) {
       const response = dataUriToResponse(bookmark.icon_blob, successCache)
       if (!response) {
-        await setIconBlob(c.env.DB, id, null)
+        await setIconBlob(c.env.DB, id, null, bookmark)
+        bookmark = await getBookmarkIconData(c.env.DB, id)
+        if (!bookmark) return fallbackIconResponse('', '', fallbackCache)
       } else {
         cacheResponse(c, cacheKey, response)
         return response
@@ -191,7 +216,7 @@ iconRoutes.get('/icon/:id', async (c) => {
     }
 
     if (bookmark.icon.startsWith('data:image/')) {
-      await setIconBlob(c.env.DB, id, bookmark.icon)
+      await setIconBlob(c.env.DB, id, bookmark.icon, bookmark)
       const response = dataUriToResponse(bookmark.icon, successCache)
       if (!response) return cachedFallbackIconResponse(c, cacheKey, bookmark.title, bookmark.url, fallbackCache)
       cacheResponse(c, cacheKey, response)
@@ -214,23 +239,35 @@ iconRoutes.get('/icon/:id', async (c) => {
       return response
     }
 
-    await setIconBlob(c.env.DB, id, iconBytesToDataUri(fetchedIcon))
+    await setIconBlob(c.env.DB, id, iconBytesToDataUri(fetchedIcon), bookmark)
     const response = iconBytesToResponse(fetchedIcon, successCache)
     cacheResponse(c, cacheKey, response)
     return response
   } catch {
-    return fallbackIconResponse('', '')
+    // 已解析为 authorized 的请求（合法 key）即便异常也不能回落到公开缓存策略。
+    return fallbackIconResponse('', '', authorized ? ICON_PRIVATE_CACHE : ICON_FALLBACK_CACHE)
   }
 })
 
-iconRoutes.get('/category-icon/:id', async (c) => {
+iconRoutes.get('/category-icon/:id', objectIconClientCache, async (c) => {
   const id = Number(c.req.param('id'))
   if (!Number.isInteger(id) || id <= 0) {
     return errorIconResponse('invalid id', 400)
   }
 
+  // 同 /icon/:id：授权状态需要在 catch 中可见，保证合法 key 的异常响应也是 no-store。
+  let authorized = false
   try {
-    const { authorized, cacheKey, successCache, fallbackCache } = await resolveIconAccess(c)
+    const access = await resolveIconAccess(c)
+    const cacheKey = access.cacheKey
+    const successCache = access.successCache
+    const fallbackCache = access.fallbackCache
+    authorized = access.authorized
+    if (!authorized && !await isCategoryIconAnonymouslyVisible(c.env.DB, id)) {
+      // 私密、未知或循环分类的匿名兜底不写共享 cache，避免隐私翻转后复用旧正文。
+      return fallbackIconResponse('', '', ICON_FAILURE_CACHE)
+    }
+
     if (cacheKey) {
       const cached = await getCachedResponse(cacheKey)
       if (cached) {
@@ -238,18 +275,19 @@ iconRoutes.get('/category-icon/:id', async (c) => {
       }
     }
 
-    // 分类图标同样匿名可访问：一次读全部分类，既算出可见集合又拿到目标分类。
-    // 私密分类及其后代一律走不含标题的兜底图标（PROB-20 方案 1）。带合法授权时跳过判定。
-    const categories = await listCategories(c.env.DB)
-    if (!authorized && !getPublicCategoryIds(categories).has(id)) {
-      return cachedFallbackIconResponse(c, cacheKey, '', '', fallbackCache)
-    }
-
-    const category = categories.find((item) => item.id === id)
+    const category = await getCategory(c.env.DB, id)
     if (!category) {
       // 授权路径也不能泄露「id 不存在」与「id 存在但无图标」的区别之外的信息，
       // 因此这里与匿名路径同样传空标题。
-      return cachedFallbackIconResponse(c, cacheKey, '', '', fallbackCache)
+      return fallbackIconResponse('', '', fallbackCache)
+    }
+    if (!category.icon && category.icon_blob) {
+      const stored = decodeVersionedIcon(category.icon_blob)
+      if (stored) {
+        const response = iconBytesToResponse(stored, successCache)
+        cacheResponse(c, cacheKey, response)
+        return response
+      }
     }
     if (!category.icon) {
       return cachedFallbackIconResponse(c, cacheKey, category.title, '', fallbackCache)
@@ -293,6 +331,7 @@ iconRoutes.get('/category-icon/:id', async (c) => {
     cacheResponse(c, cacheKey, response)
     return response
   } catch {
-    return transientIconErrorResponse('', '')
+    // 与 /icon/:id 同理：合法 key 的异常响应不能回落到公开缓存策略。
+    return transientIconErrorResponse('', '', authorized ? ICON_PRIVATE_CACHE : ICON_FAILURE_CACHE)
   }
 })

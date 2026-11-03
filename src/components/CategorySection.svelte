@@ -1,7 +1,10 @@
+<svelte:options runes />
+
 <script lang="ts">
   import type { CardStyle, DescriptionDisplayMode, PublicBookmark, PublicCategory } from '../../shared/types'
   import type { CategoryTreeOption } from '../lib/categorySelect'
   import { resolveBookmarkDescriptionMode } from '../lib/descriptionMode'
+  import { isBookmarkIconAccessRequired } from '../lib/adminListState'
   import BookmarkCard from './BookmarkCard.svelte'
   import CategoryIcon from './CategoryIcon.svelte'
   import { getInfoCardMobileTrackWidth, getInfoCardTrackWidth, getIconCardTrackWidth } from '../lib/bookmarkCardLayout'
@@ -9,46 +12,97 @@
 
   type AsyncVoid<T = void> = T | Promise<T>
 
-  export let category: PublicCategory
-  export let bookmarks: PublicBookmark[] = []
-  export let level: 1 | 2 = 1
-  export let showEmpty = true
-  export let displayTitle = ''
-  export let showHeading = true
-  export let inlineActions = false
-  export let showCategoryIcon = true
-  export let canAddBookmark = false
-  export let onCreateSubcategory: (() => AsyncVoid) | undefined = undefined
-  export let canSort = false
-  /** 传入后由页面统一控制排序会话，支持多个分类列表互相拖放。 */
-  export let controlledSortMode: boolean | undefined = undefined
-  export let sortGroup = ''
-  export let sortCategoryId: number | null = null
-  export let showSortActions = true
-  export let cardWidth = 160 // 与 CARD_SIZE_DEFAULTS.width 一致（refs #22）
-  export let cardHeight = 0
-  export let cardStyle: CardStyle = 'info'
-  export let cardIconSize = 70
-  export let cardShowDescription = true
-  export let cardDescriptionMode: DescriptionDisplayMode = cardShowDescription ? 'always' : 'hidden'
-  export let cardIconShowTitle = true
-  export let moveCategories: CategoryTreeOption[] = []
-  export let onMoveBookmark: ((bookmark: PublicBookmark, categoryId: number) => AsyncVoid) | undefined = undefined
-  export let onAddBookmark: ((categoryId?: string | number) => AsyncVoid) | undefined = undefined
-  export let onEditBookmark: ((bookmark: PublicBookmark) => AsyncVoid) | undefined = undefined
-  export let onRequestSort: (() => AsyncVoid) | undefined = undefined
-  export let onCancelSortSession: (() => AsyncVoid) | undefined = undefined
-  export let onSaveSortSession: (() => AsyncVoid) | undefined = undefined
-  export let onSortDraft: ((categoryId: number, orderedIds: number[]) => AsyncVoid) | undefined = undefined
-  export let onSortTransfer: ((transfer: SortTransfer) => AsyncVoid) | undefined = undefined
+  interface Props {
+    category: PublicCategory
+    bookmarks?: PublicBookmark[]
+    level?: 1 | 2
+    showEmpty?: boolean
+    displayTitle?: string
+    showHeading?: boolean
+    inlineActions?: boolean
+    showCategoryIcon?: boolean
+    canAddBookmark?: boolean
+    onCreateSubcategory?: () => AsyncVoid
+    canSort?: boolean
+    /** 传入后由页面统一控制排序会话，支持多个分类列表互相拖放。 */
+    controlledSortMode?: boolean
+    sortGroup?: string
+    sortCategoryId?: number | null
+    showSortActions?: boolean
+    cardWidth?: number // 与 CARD_SIZE_DEFAULTS.width 一致（refs #22）
+    cardHeight?: number
+    cardStyle?: CardStyle
+    cardIconSize?: number
+    cardShowDescription?: boolean
+    cardDescriptionMode?: DescriptionDisplayMode
+    cardIconShowTitle?: boolean
+    moveCategories?: CategoryTreeOption[]
+    onMoveBookmark?: (bookmark: PublicBookmark, categoryId: number) => AsyncVoid
+    onAddBookmark?: (categoryId?: string | number) => AsyncVoid
+    onEditBookmark?: (bookmark: PublicBookmark) => AsyncVoid
+    onRequestSort?: () => AsyncVoid
+    onCancelSortSession?: () => AsyncVoid
+    onSaveSortSession?: () => AsyncVoid
+    onSortDraft?: (categoryId: number, orderedIds: number[]) => AsyncVoid
+    onSortTransfer?: (transfer: SortTransfer) => AsyncVoid
+    /**
+     * 对匿名访客可见的分类 id 集合。判定书签图标是否需要授权 key 时用「可见集合」而不是
+     * 「隐藏集合」：分类已被删除的陈旧数据也必须落到需要授权的一侧，否则会永久显示兜底图标。
+     * 「经常访问」这类区块会混合不同分类的书签，所以按单个书签判定，而不是看区块自身。
+     */
+    publicCategoryIds?: Set<number>
+    /** 私密对象的短期图标授权 key；只有需要授权的对象才会被附加。 */
+    iconAccessKey?: string
+    reuseSharedIcon?: boolean
+    /** REQ-17 聚合区：按书签 category_id 查来源二级分类名，用于卡片来源标注；未传则不显示。 */
+    sourceCategoryTitles?: ReadonlyMap<number, string>
+  }
+
+  let {
+    category,
+    bookmarks = [],
+    level = 1,
+    showEmpty = true,
+    displayTitle = '',
+    showHeading = true,
+    inlineActions = false,
+    showCategoryIcon = true,
+    canAddBookmark = false,
+    onCreateSubcategory = undefined,
+    canSort = false,
+    controlledSortMode = undefined,
+    sortGroup = '',
+    sortCategoryId = null,
+    showSortActions = true,
+    cardWidth = 160,
+    cardHeight = 0,
+    cardStyle = 'info',
+    cardIconSize = 70,
+    cardShowDescription = true,
+    cardDescriptionMode = cardShowDescription ? 'always' : 'hidden',
+    cardIconShowTitle = true,
+    moveCategories = [],
+    onMoveBookmark = undefined,
+    onAddBookmark = undefined,
+    onEditBookmark = undefined,
+    onRequestSort = undefined,
+    onCancelSortSession = undefined,
+    onSaveSortSession = undefined,
+    onSortDraft = undefined,
+    onSortTransfer = undefined,
+    publicCategoryIds = new Set(),
+    iconAccessKey = '',
+    reuseSharedIcon = false,
+    sourceCategoryTitles = undefined,
+  }: Props = $props()
 
   // 排序会话由页面统一控制：进入后拖拽只改页面草稿，保存/取消都由页面处理。
-  let savingSort = false
+  let savingSort = $state(false)
 
-  $: activeSortMode = controlledSortMode ?? false
+  const activeSortMode = $derived(controlledSortMode ?? false)
   // 跨分类拖放时单个甚至零个书签也需要入口，把书签拖出或拖入本分类。
-  $: canEnterSort = canSort && controlledSortMode !== undefined
-  $: showActions = activeSortMode || canAddBookmark || canEnterSort || Boolean(onCreateSubcategory)
+  const canEnterSort = $derived(canSort && controlledSortMode !== undefined)
+  const showActions = $derived(activeSortMode || canAddBookmark || canEnterSort || Boolean(onCreateSubcategory))
 
   function handleReorder(orderedIds: Array<string | number>) {
     void onSortDraft?.(category.id, orderedIds.map(Number))
@@ -67,14 +121,14 @@
     }
   }
 
-  $: sectionId = `category-${category.id}`
-  $: heading = displayTitle || category.title
-  $: iconGridTrackWidth = getIconCardTrackWidth(cardIconSize, cardIconShowTitle)
-  $: infoCardTrackWidth = getInfoCardTrackWidth(cardWidth)
-  $: gridMinWidth = cardStyle === 'info' ? infoCardTrackWidth : iconGridTrackWidth
-  $: mobileGridMinWidth = cardStyle === 'info' ? getInfoCardMobileTrackWidth(cardWidth) : iconGridTrackWidth
-  $: gridGap = cardStyle === 'info' ? '18px' : '22px 24px'
-  $: mobileGridGap = cardStyle === 'info' ? '1rem' : '14px 16px'
+  const sectionId = $derived(`category-${category.id}`)
+  const heading = $derived(displayTitle || category.title)
+  const iconGridTrackWidth = $derived(getIconCardTrackWidth(cardIconSize, cardIconShowTitle))
+  const infoCardTrackWidth = $derived(getInfoCardTrackWidth(cardWidth))
+  const gridMinWidth = $derived(cardStyle === 'info' ? infoCardTrackWidth : iconGridTrackWidth)
+  const mobileGridMinWidth = $derived(cardStyle === 'info' ? getInfoCardMobileTrackWidth(cardWidth) : iconGridTrackWidth)
+  const gridGap = $derived(cardStyle === 'info' ? '18px' : '22px 24px')
+  const mobileGridGap = $derived(cardStyle === 'info' ? '1rem' : '14px 16px')
   async function handleAddBookmark() {
     await onAddBookmark?.(category.id)
   }
@@ -85,8 +139,8 @@
     <header class="section-header" class:no-heading={!showHeading} class:inline-actions={inlineActions && !showHeading}>
       {#if showHeading}
         <div class="section-title-wrap">
-          {#if showCategoryIcon && category.icon}
-            <CategoryIcon category={category} size={level === 2 ? 'var(--category-child-icon-size, 30px)' : 'var(--category-root-icon-size, 38px)'} className="section-icon" />
+          {#if showCategoryIcon && (category.icon || category.icon_display === 'image')}
+            <CategoryIcon category={category} size={level === 2 ? 'var(--category-child-icon-size, 30px)' : 'var(--category-root-icon-size, 38px)'} className="section-icon" iconAccessKey={publicCategoryIds.has(Number(category.id)) ? '' : iconAccessKey} />
           {/if}
           <div class="section-copy">
             <div class="section-heading-row">
@@ -102,7 +156,7 @@
             <button
               type="button"
               class="add-link-button ghost"
-              on:click={() => onCancelSortSession?.()}
+              onclick={() => onCancelSortSession?.()}
               disabled={savingSort}
               aria-label="取消排序"
               title="取消排序"
@@ -113,7 +167,7 @@
             <button
               type="button"
               class="add-link-button"
-              on:click={saveSort}
+              onclick={saveSort}
               disabled={savingSort}
               aria-label="保存排序"
               title="保存排序"
@@ -126,7 +180,7 @@
               <button
                 type="button"
                 class="add-link-button"
-                on:click={() => void onCreateSubcategory?.()}
+                onclick={() => void onCreateSubcategory?.()}
                 aria-label="新建子分类"
                 title="新建子分类"
               >
@@ -142,7 +196,7 @@
               <button
                 type="button"
                 class="add-link-button"
-                on:click={handleAddBookmark}
+                onclick={handleAddBookmark}
                 aria-label="新增书签"
                 title="新增书签"
               >
@@ -158,7 +212,7 @@
               <button
                 type="button"
                 class="add-link-button ghost"
-                on:click={() => onRequestSort?.()}
+                onclick={() => onRequestSort?.()}
                 aria-label="排序"
                 title="排序"
               >
@@ -198,6 +252,7 @@
         <div class="bookmark-grid-item" data-sortable-item data-sort-id={bookmark.id}>
           <BookmarkCard
             {bookmark}
+            sourceCategoryTitle={sourceCategoryTitles?.get(bookmark.category_id)}
             style={cardStyle}
             iconSize={cardIconSize}
             showDescription={resolveBookmarkDescriptionMode(bookmark, cardDescriptionMode) !== 'hidden'}
@@ -210,6 +265,8 @@
             moveCategories={moveCategories}
             onEdit={onEditBookmark}
             onMoveBookmark={onMoveBookmark}
+            iconAccessKey={isBookmarkIconAccessRequired(bookmark, publicCategoryIds.has(Number(bookmark.category_id))) ? iconAccessKey : ''}
+            reuseCompletedObject={reuseSharedIcon}
           />
         </div>
       {/each}
@@ -242,6 +299,7 @@
     font-size: var(--category-child-font-size, 0.92rem);
     font-weight: 600;
     letter-spacing: 0.01em;
+    color: var(--category-child-title-color, var(--home-text-color, currentColor));
   }
 
   .section-header {
@@ -291,7 +349,7 @@
   .section-heading-row h3 {
     min-width: 0;
     flex: 1 1 auto;
-    color: var(--home-text-color, currentColor);
+    color: var(--category-root-title-color, var(--home-text-color, currentColor));
     font-size: var(--category-root-font-size, 1.02rem);
     font-weight: 650;
     line-height: 1.15;

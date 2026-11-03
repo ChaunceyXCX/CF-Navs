@@ -10,10 +10,11 @@
 | `main` | 已审阅归档快照 | **只接受来自 `develop` 的合并**，禁止直接提交、禁止在 main 上改文件；**只在维护者明确要求时才合并**，不作为部署来源 |
 
 - 开始任何改动前确认当前分支是 `develop`。
-- 部署来自 `develop`，因此 `main` 不代表线上代码；「线上是哪个版本」看 `develop` 上最新的版本 tag，不看 `main`。
+- 部署来自 `develop`，因此 `main` 不代表线上代码；线上状态以实际部署的构建、对应提交及行为验证为准，版本 tag 只标识正式发行版本。
 - 合并 `develop` → `main` 是一个独立的归档动作，需要维护者主动要求；不要为了发版而自动合并。
 - 因为 `main` 是默认分支而部署走 `develop`，**推送到 `develop` 的关闭关键字不会关闭 Issue**。Issue 需要在部署验证通过后手动关闭，并在评论里引用对应的版本 tag。
 - `main` 上出现过只存在于 main 的内容（如 Issue 模板），这类单向缺失会让 `develop` 不再是 `main` 的超集，后续合并必然冲突。**发现 main 独有内容时，先回流到 `develop`，再继续开发。**
+- 自托管（Node + Docker）与 Cloudflare 版**同仓维护**，不设独立分支：Node 运行时在 `server/`、部署资产在 `docker/`，与应用代码一起在 `develop` 落地、一起验证；镜像由版本 tag 触发 CI 发布（见第 6 节第 10 步）。展开说明见 `docs/reference/BRANCHING_AND_RELEASE.md`。
 - 禁止 `git push --force` / `--force-with-lease` / `reset --hard` / 分支删除，除非明确针对某次事故且已确认要覆盖哪些提交。
 
 ## 2. 一次改动一个主题
@@ -53,7 +54,7 @@
 
 | 级别 | 内容 | 命令 | 前置条件 |
 | --- | --- | --- | --- |
-| **L0** 静态 | 类型、单元测试、构建、空白字符 | `npm run type-check`、`npm test`、`npm run build`、`git diff --check` | 无。CI 已覆盖前三项 |
+| **L0** 静态 | lint、类型、单元测试、构建、空白字符 | `npm run lint`、`npm run type-check`、`npm test`、`npm run build`、`git diff --check` | 无。CI 已覆盖前四项 |
 | **L1** API 端到端 | 鉴权、CRUD、排序、设置、导入导出、登出失效 | `npm run smoke` | 需先 `npm run build`（`ASSETS` 绑定要 `./dist`）。脚本自己起隔离实例、造临时 D1 与一次性凭据并拆除，**CI 已覆盖** |
 | **L2** 浏览器 | 渲染、交互、后台流程 | `npm run regression:chrome`；组件测试随 `npm test` 一起跑 | 回归套件需可达目标地址与管理员凭据；组件测试无前置 |
 | **L3** 真机 / 部署后 | 首访/二访、Service Worker 与预缓存、离线、匿名边界、弹窗尺寸、登出撤销、三档截图 | `npm run accept:prod` + `npm run perf:audit` | 需已部署实例。脚本**只读**，不产生任何服务端写入，可无条件对生产跑 |
@@ -74,6 +75,13 @@
 - 要测行为**先抽纯函数**再单测。组件的 DOM 行为（焦点、ARIA、键盘、禁用联动）用 `@testing-library/svelte` + jsdom 写组件测试，文件首行加 `// @vitest-environment jsdom`，不改全局测试环境。
 - 计算样式、`dvh` 与安全区、虚拟键盘、剪贴板用户手势、iOS 输入放大 **jsdom 证明不了**。计算样式与视口数值现在由 L3 的 CDP 脚本覆盖；真机独有的那几项进 L4。不要用源码文本断言假装覆盖了它们。
 - 源码文本断言（`readFileSync` + `toContain`）只用于"接线是否存在"，不用于证明行为。
+- 测试分两个 Vitest project（`vite.config.ts`）：**首行**是 `// @vitest-environment jsdom` 的文件进 `jsdom` project，走 `vmForks` 池（同一 worker 复用已加载的 jsdom，每个文件仍在全新 VM 上下文里求值）；其余进 `node` project，走默认 `forks`。全量从约 140 秒降到约 45～60 秒（双核机器；环境准备 58.6s → 3.7s），测试文件与用例数不变。注意：
+  - 默认 worker 数为 `min(4, max(2, availableParallelism() - 1))`，避免多核机器同时冷编译和加载 jsdom，把短用例挤到既有 5 秒期限之外；不提高 `testTimeout`，不跳过用例或取消隔离。需要覆盖时使用正整数环境变量 `VITEST_MAX_WORKERS`；当前 Vitest 4.1 的 `extends: true` 子项目会保留配置中的 worker 数，单传 `--maxWorkers` 不一定覆盖它们，须核对实际解析值。并发调整后必须跑全量测试，不能用单文件通过替代。
+  - 只认首行。docblock 写在第二行的 jsdom 文件仍会在 jsdom 里跑，但落进 `node` project 的 `forks` 池，失去提速。
+  - `vmForks` 下 `instanceof` 跨 realm 会失真（`node:sqlite` 返回的对象、Node 内置模块产出的 `Uint8Array` 等来自宿主 realm；改成 `vmForks` 跑全部文件时曾有 4 个纯逻辑用例因此失败）。不需要 DOM 的纯逻辑测试**不要**加 jsdom docblock；需要 DOM 又要断言这类对象时，改用结构断言（`ArrayBuffer.isView`、`toMatchObject`），不要把文件挪回 `forks` 了事。
+  - 只需要一个对象引用、不触碰 DOM API 的测试应留在 `node` project（例如 `searchBoxVisibility` 用 `{}` 代替元素）。
+- `tests/` 已纳入类型检查：`npm run type-check` 末尾串联 `npm run type-check:tests`（`tsc --noEmit -p tsconfig.tests.json`），CI 经 `type-check` 一并执行。`tsconfig.tests.json` 继承主配置的严格设置，额外加载 `@types/node`（与 CI 的 Node 24 对齐）；测试导入的 `scripts/lib/*.mjs` 只参与类型推断（`checkJs: false`），`scripts/` 本身仍**不在**检查范围，若要纳入需另开主题逐文件补 JSDoc。测试与 `@cloudflare/workers-types` 同处一个程序，后者 HTMLRewriter 的 `Element` 会并入 DOM `Element`（`append` / `remove` 等签名冲突）：测试里优先用 `appendChild`、把查询辅助函数的参数标为 `Element` 而非 `ParentNode`，确需具体子类型时经 `unknown` 收窄并注明原因。
+- Lint：`npm run lint`（ESLint 9 flat config `eslint.config.js`，`--max-warnings 0`），覆盖 `worker/`、`src/`（含 `.svelte`）、`shared/`、`tests/`、`scripts/`（Node 全局）与 `public/sw.js`；浏览器扩展与 `_archive/` 不在范围内。规则只取 `@eslint/js` / `typescript-eslint`（非 type-aware，类型由 type-check 负责）/ `eslint-plugin-svelte` 的 recommended，关闭项及原因写在配置注释里；**不含任何格式化规则，仓库不使用 Prettier**，缩进、行尾等基础约定见 `.editorconfig`，不要为风格做整文件重排。未使用的变量 / 形参 / catch 变量与 tsconfig 同一约定：刻意保留的用 `_` 前缀。确需豁免时用 `// eslint-disable-next-line <规则> -- <原因>` 逐行注明，不要整文件关闭。
 - 组件测试依赖 `vite.config.ts` 在 test 模式下的 `resolve.conditions: ['browser']`。Svelte 5 的 `exports["."]` 在 `browser` 条件下提供 `src/index-client.js`，默认落到 `src/index-server.js`，其中 `onMount` 是空实现；选错入口会让组件注册的 `window` / `document` 监听器**静默不存在**。不要删掉这项配置。
 - 断言「观察不到某个行为」时，先确认不是运行时解析或缺失的浏览器 API（`scrollIntoView`、`matchMedia`、`scrollTo` 在 jsdom 里都需要自己补），再下「jsdom 做不到」的结论。把环境问题写成不可迁移结论会留下错误的判断记录。
 - 新写的组件测试要做一次反向对照：改坏被测行为，确认对应用例精确失败。若两道防线互为兜底（去掉任一条都不红），在文件里注明这是 defense-in-depth，不要因此删掉断言。
@@ -105,12 +113,13 @@
 3. 同步 `package.json` 的 `version`。
 4. 提交 `chore(release): v0.x.y`。
 5. 在 `develop` 的该提交上打 tag：`git tag -a v0.x.y -m "v0.x.y"`，推送分支与 tag。
-6. 部署（`npm run deploy`），随后验证**生产自定义域**而不只是默认域名。
+6. 等待本仓库 `develop` 推送触发的 Cloudflare 自动构建和部署，核对目标构建后验证**生产自定义域**而不只是默认域名；不要再执行一次手动部署。未接入自动部署的独立实例才按部署指南使用 `npm run deploy`，并单独取得该操作授权。
 7. 执行该版本的 L3 清单，结果回写到 `CHANGELOG.md` 对应版本段或 `docs/BACKLOG.md`。
 8. L3 通过后，手动关闭该版本闭环的 Issue，并在评论里写明版本 tag。关闭前先 `gh auth status` 确认活动账号；**写 Issue 需要单独授权**。**这一步只针对云端已有编号的条目**；本地发起的条目没有 Issue，它们的闭环凭据是 `CHANGELOG.md` 对应版本段加该版本的 tag。
 9. （可选，需维护者主动要求）把该版本合并到 `main` 归档：`git checkout main && git merge --no-ff v0.x.y -m "merge: archive v0.x.y into main"`。
+10. 发布自托管镜像：版本 tag 的推送会自动触发镜像工作流，verify 通过后发布 GHCR 镜像（`0.x.y` 与 `latest` 标签，amd64/arm64 双架构）；`develop` 的日常推送只产出 `sha-<短哈希>` 预览镜像。无需手工构建或推送镜像。
 
-这样「线上是哪个版本」= `develop` 上最新的版本 tag；「某个修复上线了吗」= `git tag --contains <sha>`。每一步都需要单独授权：打 tag、推送、部署、关闭 Issue、合并 `main` 都不由一次「发版」指令一并授权。
+版本 tag 与 `git tag --contains <sha>` 只能证明发行版本包含某提交，不能证明部署成功；修复是否上线仍须核对实际目标构建和可观察行为。打 tag、推送、手动部署、关闭 Issue、合并 `main` 分别按授权范围执行，不因一次「发版」指令自动扩大范围；本仓库推送到 `develop` 会触发自动部署，应在推送前明确这一效果。
 
 ## 7. 提交前的安全边界
 

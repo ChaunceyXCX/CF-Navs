@@ -7,6 +7,695 @@
 
 ## [Unreleased]
 
+## v0.9.2 — 2026-11-01
+
+### 新增
+
+- **浏览器收藏同步前选择分类**：Chrome/Edge 扩展在当前网页右上角显示悬浮分类面板，支持选择一级或二级分类；点击扩展图标可展示或隐藏面板，连续收藏进入持久化待同步队列，稍后处理或同步失败不丢弃记录。同步接口接受可选 `category_id` 并校验分类存在，旧客户端省略该字段时仍写入“浏览器新增收藏”。
+- **浏览器扩展确认体验优化**：分类面板允许在同步前编辑书签标题和 `http` / `https` URL；编辑内容会先保存在待同步队列，失败重试时不会丢失。
+- **浏览器扩展待同步列表**：从扩展首页进入独立列表，支持勾选部分收藏同步、暂时保留未勾选记录和手动删除不再需要的记录；每次打开或刷新列表时动态检查浏览器收藏状态，并标记已经不存在的浏览器收藏。
+
+### 修复
+
+- **浏览器收藏同步确认页无法关闭或恢复**：稍后处理通过宿主页面消息返回扩展首页，后台记录并校验最近的网页标签，在扩展窗口抢焦点或 Service Worker 重启后仍能把待同步面板恢复到正确网页；待同步记录不会因关闭面板而丢失。
+- **书签透明圆角的残余微闪**：卡片外框不再因普通 hover / focus-within 无条件提高叠放层级，避免鼠标仅经过圆角透明区时改变毛玻璃合成。仅在支持悬停且提示层实际显示时提高层级，排序态不提升，右键菜单保留更高优先级；补充透明圆角、提示层和 1.5 倍 DPR 浏览器回归。硬件浏览器的临时样式 A/B/A 对照已确认局部微弱像素变化随该规则消失并恢复，不将其扩大为所有跨行闪影均已复现或解决。
+- **测试并发导致的偶发超时**：Vitest 默认 worker 数限制在 2～4，避免多核机器的模块冷加载与 jsdom 事件处理争用执行资源，使 `appServices` 和图像生命周期队列用例越过原有 5 秒期限；保留全部用例、原超时和 node/jsdom 隔离方式。工程规则补充可同时覆盖两个子项目的 `VITEST_MAX_WORKERS`，不再把仅改变顶层值的命令行参数当作有效降并发证据。
+- **书签卡片边缘悬停抖动**：详情与极简卡片不再通过 hover / 键盘聚焦位移改变链接命中区域，避免鼠标在底边微移时反复触发悬停、提示层闪动及毛玻璃重绘。保留毛玻璃、悬停描边、阴影与键盘焦点环；增加基于真实首页构建的隔离 Chrome 回归，覆盖边缘命中、上方卡片像素稳定、明暗主题、触摸和减少动态效果。硬件 GPU 合成与部署后表现仍需在目标环境复验。
+
+### 变更
+
+- **浏览器扩展首页连接设置**：已连接导航页时默认收起地址、账号和密码输入框，仅显示连接摘要；点击“修改登录信息”即可展开并更新连接设置。会话过期或尚未连接时自动展开登录表单。
+
+- **可选 GitHub Actions 部署（Issue #23）**：新增 `.github/workflows/deploy.yml`，在 Workers Builds / Git 导入不可用时可由推送触发 `npm ci`、构建、`setup:wrangler` 资源解析和 `wrangler deploy`。默认不启用，必须显式设置仓库变量 `CF_NAVS_DEPLOY_PROVIDER=github-actions`；默认部署仍是 Cloudflare 账号关联的 Git 构建。工作流只用 `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` 访问目标账号，真实 D1/KV ID 只写入 runner 临时配置；启用前需断开 Cloudflare Git 集成以免重复部署。
+- **修正使用指南标题**：移除左上角仅写“CF”的绿色标识，弹窗标题完整显示“CF-Navs 使用指南”，英文切换后显示“CF-Navs User Guide”，切换步骤时保持产品名称；窄屏头部允许换行，避免标题与语言按钮相互挤压。
+- **修复指南快捷键暗色对比度**：提示栏的方向键与 Esc 键帽改用主题表面色和边框色，避免暗色模式下浅色符号叠在固定白底上。
+- **首页使用指南与右上角菜单**：六步中英指南首次访问时浮在真实首页上，首页入口可随时重开，独立 `/guide/` 也默认显示指南；弹窗及示例插图跟随当前明暗主题、强调色和书签卡片风格，并保持深色模式下的插图对比度。书签示例改为 NodeLoc 论坛，不再渲染模拟首页。首页右上角操作组改为桌面与移动端统一的显隐菜单；窄屏搜索入口隐藏时菜单横向展开，避免遮挡首页标题。
+- **修复指南导航缓存串页**：Service Worker 按各自 URL 缓存非首页导航，`/guide/` 不再覆盖离线首页缓存；离线时仍优先回退到最近的指南页或 app shell。
+
+## v0.9.1 — 2026-10-31
+
+## v0.9.0 — 2026-10-19
+
+### 文档与工具
+
+- **README 自动翻译工作流**：新增基于 Index-Translate 的英文 README 翻译流程，支持预览、完整翻译和自动创建翻译 PR；生成器会按输出目录修正相对链接，并将英文版本的语言切换指回中文 README。
+
+### 变更
+
+- **图标本地优先缓存 v2（取代可信设备）**：所有对象图标（书签 / 分类，公开 / 私密）成功取到真实图片后保存到一个 IndexedDB 库（`cf-navs-icons-v2`），匿名访客同样保存，无需任何开关。每个对象一条，版本取图标代理 URL（去掉 `key`）；同版本直接本地显示、零网络请求，版本变化只重下这一张。新增全局图标标志位 `icon_epoch`（schema 第 4 步，D1 触发器在对象增删、图标 / 可见性 / 所属分类 / 标题链接变化时递增），随 `/api/data/version` 与两类聚合返回；标志位变化时客户端对照当前数据清理已不存在的对象条目。取消 10 MiB / 1000 条 / LRU 总预算，只受浏览器配额约束；保留三个兜底：单图 > 512 KiB 只显示不落盘、首次写入申请 `navigator.storage.persist()`、配额满或 IndexedDB 不可用退回内存且不报错。登出与会话失效只删私密条目。移除可信设备开关与「设备缓存」设置页、`/api/icon-local-copy`、`auth_receipt`、设备状态机与旧副本存储（约 2000 行），启动时删除旧库 `cf-navs-object-icons-v1`；随之删除依赖可信设备的浏览器回归脚本（`issue-browser-regression`、`icon-ui-regression`、`category-icon-{perf,prod}-regression`、`icon-display-prod-regression`、`test:icon-storage`）。服务端 edge 可见性闸门与 edge cache 不变。新增 `iconLocalStore` / `localIconView` / `iconEpoch` / `bookmarkCardLocalFirst` 测试。
+
+### 修复
+
+- **首页书签删除确认弹窗**：确认层级提高到编辑窗口之上，避免右键编辑书签后点击删除时，二次确认被编辑窗口遮挡。
+- **脚本去重：本地 wrangler 调用与页面内登录收敛到 `scripts/lib`**（代码审查三轮第 35 项）：新增 `scripts/lib/wranglerLocal.mjs`（仓库根目录、wrangler 入口、`wrangler.local.toml` / `wrangler.toml` 选择、`runWranglerSync`），替换 `smoke-local`、`ordinary-icon-concurrency-experiment`、`ordinary-icon-scale-fixtures` 中三份逐字相同的实现（`smoke-local` 仍以原来的 `fail()` 报错退出）；新增 `scripts/lib/browserLogin.mjs` 的自包含 `loginInPage`，替换 `chrome-regression`、`perf-audit` 与两个图标实验脚本中四份页面内登录（各自对外的返回 / 抛错约定不变）。UI 驱动的登录（`issue-browser-regression`）与纯 API 登录（`ordinary-icon-scale-fixtures`）语义不同，保留原样。新增 `tests/unit/scriptsSharedLib.test.ts`（5 项，含不再保留旧副本的源码护栏）；`smoke` 123/123；`regression:chrome` 对本地生产构建 24/25，唯一失败为沙箱代理拦截外部 favicon 请求，与改动前一致。
+- **实测最大规模导入的 D1 单语句限制**（代码审查三轮第 34 项）：审查曾担心导入 2 万条时单个 batch 约 2860 条语句可能超 D1 上限。按 Cloudflare D1 文档，batch 内的限制逐条生效（每条最多 100 个绑定参数、SQL 文本最多 100 KB），整个 batch 受 30 秒时长约束。新增 `tests/unit/importScaleLimits.test.ts`：在真实 SQLite 上导入校验允许的最大规模（2000 分类 + 20000 书签，一个 batch 共 3000 余条语句），逐条断言绑定参数 ≤ 100、SQL ≤ 100 KB，并核对落库行数；把分类或书签的分块各加大一行（超过 100 个参数）的变异均被捕获。另在本地 `wrangler dev`（workerd + D1 本地实现）通过 `/api/import` 实测同等规模：请求体 3.4 MB，1.4 秒完成，导入后 2000 / 20000 行齐全。线上 30 秒时长需部署后验证，暂不改分块策略。
+- **归档过时的计划文档**（代码审查三轮第 33 项）：`docs/plans/` 中 16 份已交付、已被取代或只代表某次采集时刻的文档移入 `docs/plans/_archive/`（Spotlight、管理员找回两组需求文档仍写着「尚未实现」，实际已上线；其余为已完成轮次的实施记录与 2026-09 的 Issue / PR 快照），新增归档说明 `docs/plans/_archive/README.md` 并在 `docs/README.md` 的目录表登记。仓库内所有指向这些文件的路径（含本文件历史条目与 `src/lib/pageScrollLock.ts` 注释）同步改为新路径，归档文档内部的相对链接也已修正；全仓 Markdown 相对链接复核 0 处失效。仍在使用的需求基线（REQ-15 图标本地优先、图标请求性能、Issue #31、PH / RD 决策记录、前端体验评估）保留原位。
+- **CI 增加首屏包体积门禁**（代码审查三轮第 32 项）：新增 `scripts/check-bundle-size.mjs`（`npm run check:bundle`）与 `bundle-budget.json`，读取 `dist/index.html` 引用的入口脚本、modulepreload 与样式表，按原始字节和 gzip 字节对比预算，超出即以非零退出；CI 在 Build 之后执行。预算以当前构建为基线留约 2% 余量（JS 283000 / gzip 97500，CSS 84000 / gzip 14500 字节；基线 JS 277281 / 95258，CSS 82136 / 13924）。有意增大首屏时须在同一提交调高预算并写明原因。新增 `tests/unit/bundleBudget.test.ts`（4 项）；人为把预算调到基线以下时脚本按预期失败。
+- **写后不再无条件整包重拉后台数据**（代码审查三轮第 31 项）：原先每次增删改、排序成功后都 `refreshLoggedInData(true)` 强制重拉 `/api/admin/data`。现在请求层把写响应包络上的 `data_version` 广播出去（`subscribeMutationDataVersion`，在 `initAppServices` 里接到 `dataService.recordMutationDataVersion`），单条分类 / 书签的新建、编辑、删除与两类排序在用服务端返回值应用到本地后改调 `confirmLoggedInDataAfterLocalMutation`：只请求一次 `/api/data/version`，服务端版本恰为本会话最后一次写入回报的版本且数据集未变时，只更新版本号并落快照；版本不符（其它标签页 / 设备写过）、没有版本信息、或有一次强制整包重拉尚未完成时，退回原来的整包重拉。批量删除 / 移动、整理、导入等没有本地应用的写入仍整包重拉；登录会话切换时清空记录的版本。测试：`dataService.test.ts` 新增 7 项（各分支与失败传播；去掉「未完成整包重拉」「数据集」「会话切换清空」「更新版本号」任一判断的变异均被捕获），新增 `tests/unit/postWriteRefresh.test.ts`（3 项：请求层只在成功且带版本的包络上广播；每类写入走哪条刷新路径），`appServices.test.ts` 增 1 项；控制器差分对照测试中两种刷新映射到同一步，路径由新用例单独钉住。`smoke` 新增 11 项（112 → 123）：新建 / 更新 / 排序 / 删除书签与新建 / 删除分类后，响应 `data_version` 等于随后 `/api/data/version`，写接口返回的行与 `/api/admin/data` 中同一行逐字段一致，排序后 `sort` 等于提交下标——这是本地应用可替代重拉的前提。首屏 `index` 276.43 → 277.28 kB（gzip 94.93 → 95.34 kB）。
+- **状态层边界：会话存储独立、模块接线集中到启动入口**（代码审查三轮第 30 项）：① 新增 `src/lib/authSession.ts`，把登录会话的 localStorage 持久化、进程内缓存与跨标签页 `storage` 监听从 `api.ts` 移出，`api.ts` 只负责请求（401 时经 `clearStoredAuthSession` 清会话）；② `stores.ts` 不再直接引用 `iconDeviceState` / `iconAccessKey`，`authStore` 改为通过 `configureLifecycle({ onLogoutStart, onSessionCleared })` 钩子通知外部，未接线时为空操作；③ `dataService.ts` 去掉模块加载时的 `objectIconLoader.configure(...)` 副作用；④ 新增 `src/lib/appServices.ts` 的 `initAppServices()`（幂等），由 `main.ts` 在挂载 App 前显式调用，统一接上「登出开始 → 设备副本退出」「会话消失 → 清图标访问 key」「图标描述符 → dataService」三条线，时序与原先一致（登出先于撤销请求通知设备，会话清除后清 key）。测试：新增 `tests/unit/appServices.test.ts`（8 项，含接线前无副作用、登出调用顺序、401 / 其它标签页退出清 key、描述符转发、幂等与源码边界护栏；去掉任一条钩子调用或转发的变异均被捕获），4 个测试文件只改了 mock / 导入路径（`api` → `authSession`）。首屏 `index` 276.18 → 276.43 kB（gzip 94.65 → 94.93 kB），为新增接线模块的固定开销。
+- **本地数据快照加 `snapshot_schema_version`**（代码审查三轮第 29 项）：公开 / 后台数据快照（localStorage 与 Cache Storage）原先只校验 `categories` / `bookmarks` 是否为数组，结构变化后旧快照可能被当成新结构读入。`snapshotStorage` 在写入时统一给信封加 `snapshot_schema_version: 1`（不改调用方对象），读取时版本不一致（含更高版本、非数字）一律视为未命中、回落到网络数据；没有该字段的旧快照按第 1 版读取，升级后离线快照不丢。以后快照结构不兼容时只需把 `SNAPSHOT_SCHEMA_VERSION` 加一。新增 `tests/unit/snapshotSchemaVersion.test.ts`（5 项，去掉读侧校验或写侧盖章的变异均被捕获）。
+- **删除两个未被引用的前端模块**（代码审查三轮第 28 项）：`src/lib/batchSelection.ts`（跨页选择工具，后台列表已改用 `adminListState`）与 `src/lib/bookmarkFaviconController.ts`（旧 favicon 控制器）在 `src/` 中零引用，只剩各自的单测引用，连同测试一起删除。`knip --production` 复核：`src/` 不再有未被引用的文件；审查中提到的「未引用 SQL 常量」复核后均有调用方，`tslib` 只是传递依赖、`package.json` 未直接声明，两者无需处理。
+- **runes 迁移第 8j 步：6 个顶层组件，第 8 步完成**（代码审查三轮第 27 项）：迁移前先补行为基线 `tests/unit/topLevelComponentsBehavior.test.ts`（jsdom，19 项，legacy 上写成并通过）。随后 CategorySection、settings/AdvancedSettingsSection、settings/SettingsHomePreview、views/Admin、SettingsPanel、views/Home 改为 runes，**`src/` 下全部 `.svelte` 组件均为 runes、零 `export let`**。**bindable**：AdvancedSettingsSection `form`（SettingsPanel `bind:form`）、SettingsHomePreview `theme = $bindable('light')`（SettingsPanel `bind:theme`）；CategorySection / Admin / Home / SettingsPanel 无 bindable。**状态**：SettingsPanel `form` → 深层 `$state`（七个设置分区与 AdvancedSettingsSection 经 `bind:form` 后以 `bind:value={form.x}` / `bind:group` 就地写字段，需要深层响应；ThemeBackgroundCard 沿用同一代理，即 8i 预留的路径），`initialForm` 只整体替换 → `$state.raw`；「`value` / `loading` 键变化整体重置」→ 只以键为依赖的 `$effect.pre`（其余引用受键比较守卫，同 8i 两个编辑框）；13 条其余 `$:` → `$derived`。Home 40 条 `$:` → 37 个 `$derived` + 3 个 `$effect.pre`：`activeId = resolveHomeActiveSectionId(navigationSections, activeId)` 这条自引用语句改为**只在解析结果不同时写回**（`untrack`；legacy 每次刷新跑一次，runes 同值重写会自触发）；`focusCategoryId` 聚焦只以 `focusCategoryId` / `sortedCategories` 为依赖（`lastFocusedCategoryId` 仍为普通比较变量）；搜索防抖调度只以 `searchQuery` 为依赖。整体替换的 `selectedCategoryIds`（Map）与 `homeSortDraft` → `$state.raw`。Admin：`<script context="module">` → `<script module>`（只放类型导出），两个懒加载组件构造函数 → `$state.raw`，`<svelte:component this={CategoryEditModalComponent}>` → 动态组件，懒加载触发的两条 `$:` → `$effect.pre`（加载调用 `untrack`），`importSource` → `$state`（`bind:importSource` 给 AdminTabContent）。`on:` 全部改事件属性，`|preventDefault` 移进处理器。**测试**：行为基线与 adminSettingsBehavior / adminSectionsBehavior / uiLeafComponentsBehavior 等既有用例零改动通过。`tests/helpers/uiLeaf/SectionFormHarness.svelte` 随真实父组件改为 runes（`form` 为 `$state`、动态组件替代 `<svelte:component>`）：`onForm` 仍按 legacy `$: onForm(form)` 的对象粒度触发（整体替换或任一字段写入都回调当前 form），并在每次变化后把 `$state.snapshot` 写回调用方传入的原对象，使「断言传入对象被就地写入」的既有用例照常成立；新增 `tests/helpers/reactiveState.svelte.ts`（以 `$state` 包装普通对象），`searchEngineSettingsSelect` 直接挂载 SearchEngine 分区时传入深层代理以模拟真实父组件（断言不变）；`categoryCollapseMarkup` / `homeCategoryScopeActions` 中对 CategorySection / Home 源码的 `export let` / `$:` 字符串断言改为对应 runes 写法；`tests/unit/componentsRunes.test.ts` 扩展为 54 项（含「`src/` 下所有 `.svelte` 以 `<svelte:options runes />` 开头、无 `export let`」的全局护栏）；`eslint.config.js` 为 `.svelte.ts` runes 模块补上 typescript-eslint 解析器。已知差异：① 8h 起的 `binding_property_non_reactive` 开发警告（全量测试 348 条）随 SettingsPanel `form` 改 `$state` **降为 0**，全量测试 `[svelte]` 开发警告为 0。② 设置分区的字段写入现在直接作用在 SettingsPanel 的代理上，`isDirty` / 校验等派生按字段粒度更新（legacy 经 bindable setter 以整份 form 通知），派生均为纯函数，结果相同。③ Home 的 `activeId` 写回只在值变化时发生；聚焦语句不再随无关状态重跑（受 `lastFocusedCategoryId` 守卫，原本即为空操作）。④ 对象 `$derived` 按 `===` 判等、prop 由有值变回 `undefined` 时取默认值（同 8c / 8d）。首屏 `index-*.js` 280.32 → 275.91 kB（gzip 95.85 → 94.55 kB）；chunk 列表（31 个文件名）不变，分包体积：SettingsPanel 94.37 → 92.60（gzip 29.50 → 28.98）、Admin 65.14 → 65.03 kB，其余不变。全量 223 个文件 / 2821 项测试、smoke 112/112 通过。
+- **runes 迁移第 8i 步：层级 2 的 6 个组件与 Toast**（代码审查三轮第 26 项）：迁移前先补行为基线 `tests/unit/level2ComponentsBehavior.test.ts`（jsdom，21 项）与设置组件替身 `tests/helpers/level2/SettingsProbe.svelte`：BookmarkCard 外壳样式 / 描述默认值、预览与排序阻止跳转、`open_method=3` 弹层与窗口 Escape、右键菜单的窗口点击关闭与「另一张卡打开时关闭」、排序移动按钮对 pointerdown / touchstart / click 的冒泡阻止、长按 500 ms 与 10 px 取消、700 ms 触摸防误点；BookmarkEditModal 打开锁滚动 / 首个分类回落 / 同内容 value 新对象不重置、输入链接即时生成候选、Logo 方案随标题更新并随提交、Iconify 防抖搜索与选中、无效名称报错后改动任一字段清除错误、新建时失焦自动取标题、保存中忽略取消；CategoryEditModal 有子分类禁用上级选择、手输 Iconify 地址视为已确认、打开时防抖搜索与重开重置；SearchSpotlight 打开聚焦 / 锁滚动、关闭还原焦点、重开清空、结果变少时高亮夹回、鼠标移入高亮、副标题分类名回落；AdminTabContent 按 tab 切换与设置组件 props 转交；ThemeBackgroundCard 类型切换归一化派发、新 prop 整体替换、valid 提示、派发拷贝；Toast 渲染与关闭。legacy 上写成并通过，28 种变异捕获 26 种（存活两种为等价变异：`showDescription=false` 时描述本就不渲染，故 `descriptionMode` 默认值不可观察；Spotlight 关闭时已清空查询，打开时的再次清空冗余）。随后 BookmarkCard、BookmarkEditModal、CategoryEditModal、SearchSpotlight、admin/AdminTabContent、settings/ThemeBackgroundCard 与 Toast 改为 runes。**dispatcher**：ThemeBackgroundCard 的 `change` / `upload` → `onchange(background)` / `onupload()`（参数即原 `e.detail`），唯一调用处 AdvancedSettingsSection 同提交改写；`uiLeafComponentsBehavior` 的三项与 `level1ComponentsBehavior` 的一项直接订阅 `events.change` 的写法随 API 改为传 `onchange` / `onupload`，断言不变。**bindable**：只有 AdminTabContent `importSource`（Admin 以 `bind:importSource` 传入，源恒为非 undefined 的 `'cf-navs'` 起始值）。**状态**：两个编辑框的 `form` → 深层 `$state`（子组件与输入框经 `bind:` 写回字段）；控制器返回的新对象（Iconify 搜索 / 标题解析状态、候选列表、菜单组件、可信图标快照）→ `$state.raw`。**`$:`**：BookmarkCard 32 条按 8g SpotlightBookmarkIcon 的方式 → `$derived` + 5 个 `$effect.pre`（菜单预取、打开时加载菜单、`trustedView.set`、图标状态键复位、窗口监听同步，调用部分 `untrack`）；两个编辑框的「键变化整体重置」只以键为依赖、其余受键比较守卫，两条 `form.icon` 同步只在值不同时写回，确认复位只在需要时写回；SearchSpotlight 高亮夹回与 open 翻转 → `$effect.pre`；Toast `$:` → `$derived`。**事件**：`on:` 改事件属性；BookmarkCard 移动按钮的三个 `|stopPropagation` 用 `{@attach}` + `svelte/events` 的 `on()` 直接挂在按钮上（同 8g BookmarkContextMenu：委托处理器会晚于排序容器的原生监听与窗口点击）；表单 `|preventDefault` 移进 `handleSubmit`；`<svelte:component>` → 动态组件（BookmarkCard 的懒加载菜单、AdminTabContent 以 `{@const}` 取设置组件）。行为基线（除上述订阅写法）与 bookmarkIconRecovery / bookmarkCardLocalIconCache / lazyBookmarkContextMenu / searchSpotlight / homeBookmarkIconAccess 零改动通过；`categoryCollapseMarkup` 中三条对 BookmarkCard 源码的字符串断言（`export let width`、`$: safeInfoCardWidth`、`on:touchstart` / `on:pointerdown|stopPropagation`）改为对应的 runes 写法；`tests/unit/componentsRunes.test.ts` 扩展为 43 项。已知差异与处理：① legacy 以整个 `form` 对象为依赖，BookmarkEditModal「输入链接后刷新候选并清空 candidateError」在任一字段写入时都会重跑——runes 深层 `$state` 是字段粒度，为保持「改动任一字段清除 Iconify 错误」，该副作用显式逐个读取 `form` 的字段（基线有对应用例）；其余由 `form` 派生的值是纯函数，粒度不同结果相同。② ThemeBackgroundCard 原先就地改写 legacy 父组件传入的背景对象并依赖可变 prop 触发自身重渲染（如遮罩透明度同时绑在 ColorAlphaInput 与 Slider 上）；runes 下普通 prop 的字段写入不触发更新，改为以深层 `$state` 承接 prop（父组件传入新对象时整体替换，本地切换类型后保持本地值），父组件传入的若已是 `$state` 代理则沿用同一个代理（8j AdvancedSettingsSection 迁移后即如此）。区别：父组件仍为 legacy 时，字段写入不再顺带改写父组件那份背景对象，父组件经 `onchange` 收到的拷贝与原先相同、随后整体替换，最终状态一致。③ 模板函数调用的依赖：SearchSpotlight 结果行副标题 `categoryTitle(...)`（legacy 编译为 `$.untrack`，只随行对象更新）现在在只有 `categories` 变化时也会更新（旧值滞留的修正）。④ CategoryEditModal 的 `parentCategoryOptions` 原先随 `form` 任一字段变化重建为新数组，现在只随 `form.id` / `categories` 变化；CategoryTreeSelect 对 `items` 只做重新测量，不可观察。⑤ 对象 `$derived` 按 `===` 判等、prop 由有值变回 `undefined` 时取默认值（同 8c / 8d）。`binding_property_non_reactive` 开发警告仍为 348（ThemeBackgroundCard 不新增）。首屏 `index-*.js` 281.90 → 280.32 kB（gzip 96.30 → 95.85 kB）；chunk 列表（31 个文件名）不变，分包体积：BookmarkEditModal 17.11 → 16.56、CategoryEditModal 7.10 → 6.78、SearchSpotlight 8.42 → 8.05、BookmarkContextMenu 4.25 → 4.12、SettingsPanel 94.58 → 94.37、Admin 65.12 → 65.14 kB。
+- **runes 迁移第 8h 步：admin/ 三个面板与七个设置分区**（代码审查三轮第 25 项）：迁移前先补行为基线 `tests/unit/adminSectionsBehavior.test.ts`（jsdom，18 项）：AnalyticsPanel 统计与 Top 20（只含有点击、按点击降序）、零访问分页与数据缩减后页码夹回；BookmarkListPanel 搜索过滤并回到第一页、排序表头三态（aria-sort 与实际顺序）、数据缩减后页码夹回、被删掉的书签从选择中剔除、全选当前页与半选态、跨页选择摘要、排序模式进入清空搜索 / 保存回调 / 取消、链接健康检测分批（10 个一批）与进度 / 结果、批量移动成功后清空选择并关闭弹层；CategoryListPanel 分页夹回、选择剔除、全选当前页与批量删除、一级 / 子级排序保存时带父级 id；七个设置分区经 `SectionFormHarness`（以 SettingsPanel 的方式 `bind:form` 的 legacy 替身）观察写回：Card 挂载即按描述策略校正 `card_show_description` 并随单选更新、风格切换；Basic 标题输入 / 主题单选 / saving 禁用；Hero 滑块与开关；Navigation 位置单选切换左右专属开关可用性、常驻展开、边距；Background 强调色；CategoryDisplay 字号与标题颜色；SearchEngine 增删引擎、删除当前默认引擎时回落、改名后下拉选项跟随。legacy 上写成并通过，24 种变异捕获 22 种（存活的两种是 Basic / CategoryDisplay 的 `syncForm` 不再 clone：字段写回本就经 `bind:` 通知父组件，clone 只换对象身份，经 `bind:form` 观察不到）。随后 admin/AnalyticsPanel、admin/BookmarkListPanel、admin/CategoryListPanel 与 settings/Background / Basic / Card / CategoryDisplay / Hero / Navigation / SearchEngine 七个分区改为 runes：七个分区 `form = $bindable()`（SettingsPanel 与 AdvancedSettingsSection 以 `bind:form` 传入，调用处零改动），面板 props 均为单向；两个列表面板各 16 条 `$:` 与 AnalyticsPanel 11 条按原拓扑顺序改为 `$derived` / `$effect.pre`：页码夹回（三处）、选择剔除（两处）、分类搜索关键词变化时重置手动收起、Card 的 `card_show_description` 校正这些写回自身的语句改为 `$effect.pre`，**只在值确实变化时写回**（runes 下对 bindable `form` 的字段写回经 setter 通知 legacy 父组件、父组件随即通知回来，同值重写会无限重跑；legacy 的 `$:` 每次刷新只跑一次）；选择剔除只依赖父组件传入的列表（原语句还依赖选择集合本身，但选择只来自当前列表里的行，剔除结果为空操作）。选择 / 展开集合、排序草稿与健康检测结果 → `$state.raw`；健康检测原先就地 `set` 后以 `healthResults = healthResults` 自赋值触发更新，`$state.raw` 下同引用赋值是空操作，改为每批换新 Map。`on:` 全部改事件属性（fieldset 上的 input / change 与 SearchEngine 下拉自身的 input 都走委托，冒泡顺序仍是下拉先于 fieldset，Issue #25 的「input 阶段先提交 current」不变，`searchEngineSettingsSelect` 零改动通过）；CategoryListPanel 去掉文件开头的 UTF-8 BOM（`<svelte:options runes />` 须位于首行）。行为基线与上述既有测试迁移后**零改动通过**；`tests/unit/componentsRunes.test.ts` 扩展为 32 项。已知差异：① 模板里以函数调用生成的值在 legacy 下只按调用实参的语法依赖更新（编译为 `$.untrack(...)`），runes 下会跟踪函数体内读到的状态——BookmarkListPanel 排序表头的 `aria-label`（`sortButtonLabel(column.field, column.label)`）原先停留在挂载时的「当前未排序…」文案，现在随排序状态更新；行内分类名 `getCategoryTitle(bookmark.category_id)` 与批量移动弹层的目标分类名（`$: moveTargetTitle`）在只有 `categories` 变化时也会更新（均为旧值滞留的修正，基线只钉 aria-sort 与实际顺序）。② 设置分区内对 `form.x` 的 `bind:value` / `bind:group` 在开发构建报 `binding_property_non_reactive`，与 8c FooterSettingsSection 相同的误报（`form` 来自 legacy SettingsPanel、不是 `$state` 代理；写回经 bindable setter 通知父组件，行为由基线覆盖），全量测试中的条数由 9 增至 348（Basic 161、CategoryDisplay 66、Navigation 35、SearchEngine 28、Hero 22、Card 17、Background 10、Footer 9），生产构建不输出；`bind:group` 不支持函数绑定，无法在不改写单选逻辑的前提下规避，留待 SettingsPanel 在 8j 改 `$state` 后一并消失。SearchEngine 引擎行 `{#each}` 内的 `bind:value={engine.name}` 等在 runes 下只就地改写行对象、不立即通知父组件，随后 fieldset 的 input / change 触发的 `syncForm` 在 tick 后 clone 并写回（legacy 会在改写时立即通知），两个 tick 后结果一致（基线的改名用例覆盖）。③ 对象值 `$derived` 按 `===` 判等、prop 由有值变回 `undefined` 时取默认值（同 8c / 8d）。首屏 `index-*.js` 282.08 → 281.90 kB（gzip 96.37 → 96.30 kB）；chunk 列表（31 个文件名）不变，分包体积：Admin 69.12 → 65.12（gzip 20.92 → 20.09）、SettingsPanel 95.31 → 94.58、CategoryEditModal 7.09 → 7.10 kB。
+
+- **runes 迁移第 8g 步：11 个层级 1 首页 / 书签组件**（代码审查三轮第 24 项）：迁移前先补行为基线 `tests/unit/level1ComponentsBehavior.test.ts`（jsdom，23 项）与 `tests/helpers/level1/` 三个 legacy 替身父组件：BookmarkBaseFields 7 个字段经 `bind:` 写回父表单（文本 / 下拉 / 复选框 / 分类树）、父组件改值后输入跟随、链接失焦回调与 loading 禁用；BookmarkCardCompact / Info 点击与右键把原生事件交给当前回调、预览态属性、描述显示模式与 `descriptionMode` 初始默认；BookmarkContextMenu 菜单内 click / pointerdown / 非 Escape 按键不冒泡到 window、Escape 放行、移动只提交一次（数字 id）且提交中不重复、选当前分类不提交；BookmarkIconCandidatePicker 选中态与回调；GradientBackgroundInput 经真实 legacy 父组件 ThemeBackgroundCard：改起始色后派发的新背景为重组渐变、父组件推送新值后两端颜色跟随；HomeHeroSearch / IconifySelector 的 `bind:` 双向写回与显隐 / 回调；HomeCategoryScope 根 / 子分类选择、tablist 语义切换、tab 键盘导航、菜单打开时操作被撤掉即收起；Sidebar 常驻展开的本地偏好读取与上报序列（挂载前 true、挂载后 false）、切换写回、同值不重复上报、悬停展开、移动端按钮 / 遮罩 / Escape / 导航后收起、activeId 变化自动展开父级（手动收起后离开再回来重新展开）、顶部导航高度上报、拖动后吞掉一次点击；SpotlightBookmarkIcon 文字回退与换书签。legacy 上写成并通过，21 种变异均有用例精确失败。随后 BookmarkBaseFields、BookmarkCardCompact、BookmarkCardInfo、BookmarkContextMenu、BookmarkIconCandidatePicker、GradientBackgroundInput、HomeCategoryScope、HomeHeroSearch、IconifySelector、Sidebar、SpotlightBookmarkIcon 改为 runes：`$bindable()` 只用于调用处确有 `bind:` 的 BookmarkBaseFields 7 个字段、HomeHeroSearch `query`、IconifySelector `iconifyName`、GradientBackgroundInput `value`；**GradientBackgroundInput 的 `change` 事件 → `onchange(value)` 回调 prop**（写回 `value` 之后同步调用，时序同原派发），唯一调用处 ThemeBackgroundCard 同提交改为 `onchange={() => void syncBackground()}`，`uiLeafComponentsBehavior` 中直接以 `events.change` 订阅它的一项随 API 改为 `onchange`；外部值同步的 `$:` → 只依赖 `value` 的 `$effect.pre`（比较变量 `lastValue` 保持普通变量）。Sidebar 15 条 `$:` → 4 个 `$derived` + 11 个 `$effect.pre`，按原拓扑顺序声明（本地收起偏好读取在 `isExpanded` 之前），写回自身所读变量或调用函数（`closeTopMenu`、上报回调、`tick().then(...)`）的部分放进 `untrack`，比较变量 `reportedPersistentExpansion` / `revealedActiveParentId` / `leftPreferenceLoaded` 保持普通变量，`{#if}` 内 `bind:this` 的 `topTrack` / `navigationRoot` / `topMenuElement` 用 `$state`、onMount 赋值的 ResizeObserver 与整体替换的展开集合用 `$state.raw`（保持原先「元素出现 / 观察器建好后重绑观察目标」的依赖）。HomeCategoryScope：4 个 `$derived` + 1 个 `$effect.pre`（操作被撤掉时收起菜单），`{#if}` 内的元素引用用 `$state`（避免 `non_reactive_update`），`<svelte:window>` 事件改属性（仍直接挂在 window）；`children` 仍是普通数组 prop（Home 显式传入、不传插槽内容）。SpotlightBookmarkIcon 按 8d CachedBookmarkIcon 的方式：10 个 `$derived` + 2 个 `$effect.pre`（`trustedView.set` 与状态键复位，均 `untrack` 语句体），可信图标快照 `$state.raw`。BookmarkContextMenu：`afterUpdate` → 显式读取全部模板依赖（含测量写回的 placement / maxHeight / topOffset）的 `$effect`，移动提交的 `$:` → `$effect.pre`（写回在 `untrack` 中）；**菜单节点上的 `on:click|stopPropagation`、`on:keydown`、`on:pointerdown|stopPropagation`、`on:touchstart|stopPropagation`、`on:touchmove|stopPropagation` 用 `{@attach}` + `svelte/events` 的 `on()` 直接挂载**而不是事件属性（事件属性会走根节点委托，祖先上的原生监听会先于 stopPropagation 收到事件；`on()` 与 legacy `on:` 同走 `create_event`，先执行内层按钮与分类选择器的委托处理器再停止冒泡，touch 监听仍为非 passive）。其余 `on:` 全部改事件属性（click / contextmenu / keydown / pointerdown / pointermove / pointerup 走委托；blur / wheel / scroll / pointercancel / mouseenter / mouseleave 与 `<svelte:window>` 仍直接挂载）。行为基线与上述既有测试迁移后**零改动通过**；源码文本断言 `categoryCollapseMarkup`（`reserveActions` 默认值、`onwheel`、菜单 `on()` 监听）与 `siteMetaRouteWiring`（`onblur`）随语法更新；`tests/unit/componentsRunes.test.ts` 扩展为 19 项（11 个组件的 runes 护栏、`$bindable` 与父组件 `bind:`、单向 prop 不 bindable、onchange 调用处、菜单直接监听与更新后测量、`$state.raw`）。开发构建下无新增 `[svelte]` 警告（仍只有 8c 的 9 条）。已知差异：① 卡片 / 分类范围 / 导航的 click、contextmenu、keydown、pointer 事件改走委托（同 8d 说明：祖先上用原生 `addEventListener` 注册的监听会先于这些处理器执行；已核对的祖先监听：BookmarkCard 挂在 window 上的点外部关闭在委托之后执行、不受影响；Sortable 只在列表容器上以 pointerdown / mousedown / touchstart 发起拖拽，卡片链接只处理 click / contextmenu，二者不交叉）。② BookmarkContextMenu 只在模板依赖变化时重新测量，legacy 还会在父组件以同一对象重推 `categories` 等任意更新后测量（测量幂等，结果不变）；菜单 `on:click` 等无处理器写法附带的事件转发（`bubble_event`）没有任何订阅方，随之移除。③ 对象值 `$derived` 按 `===` 判等（SpotlightBookmarkIcon 的 `iconBaseState`、Sidebar 的 `activeParentId` 等），同对象重推不再重跑幂等语句（同 8d）。④ prop 由有值变回 `undefined` 时取默认值（同 8c）；BookmarkCardInfo 的 `descriptionMode` 默认值按首次读取时的 `showDescription` 计算一次，与 legacy 初始化时计算一次一致。⑤ GradientBackgroundInput 不再提供 `on:change` / `$on('change')`（唯一调用方已改）。首屏 `index-*.js` 283.81 → 282.08 kB（gzip 96.87 → 96.37 kB）；chunk 列表（31 个文件名）不变，分包体积：BookmarkContextMenu 4.15 → 4.25（`on()` 直接挂载）、IconifySelector 6.94 → 6.75、SearchSpotlight 8.78 → 8.42、BookmarkEditModal 17.31 → 17.11、SettingsPanel 95.32 → 95.31 kB，Admin 69.12 kB 不变。
+
+- **runes 迁移第 8f 步：views/Install 与 views/Recover**（代码审查三轮第 23 项）：迁移前先补行为基线 `tests/unit/viewsBehavior.test.ts`（jsdom，15 项），钉住 Install 的校验顺序与首个错误文案、提交载荷（令牌 / 用户名去两端空白、密码原样）、本地错误优先于 `error` prop 且提交时清除、`error` / `mode` / `installing` props 变化后的重渲染与禁用、配置面板四种 mode 的标题与按钮、缺失绑定列表与空列表回落 `DB / SESSION`、结构版本提示；Recover 的「返回登录 / 前往初始化」回调、提交中禁用与恢复、令牌去空白后传给 API、再次提交先清除服务端错误与令牌提示、未安装与未知错误映射；两者 submit 默认行为被阻止。legacy 上写成并通过，10 种变异（错误优先级颠倒、用户名不去空白、按钮文案、绑定列表无回落、去掉 preventDefault、重试按钮不回调、取消调错回调、finally 不复位、不清服务端错误、未安装不映射）均有用例精确失败。随后两个视图改为 runes：`export let` → `interface Props` + `$props()`（默认值保留）；表单字段与 `localError` / `serverError` / `submitting` / `tokenHint` → `$state`；`formError`、`configuration` → `$derived`；`on:submit|preventDefault` → `onsubmit` + 处理器内 `event.preventDefault()`，`on:click` → `onclick`。App（已是 runes）以动态组件挂载、调用处零改动。行为基线与既有 `recoverView.test.ts` / `appComponent.test.ts` 迁移后**零改动通过**；新增源码护栏 `tests/unit/componentsRunes.test.ts`（4 项，8f 起各批共用）。开发构建下无新增 `[svelte]` 警告（仍只有 8c 的 9 条 `binding_property_non_reactive`）。已知差异：legacy 的 `$: configuration = mode === 'needs_install' ? null : configurationCopy()` 只依赖语句里出现的 `mode`，`configurationCopy()` 内读取的 `missingBindings` 变化不会重算；runes 的 `$derived` 会跟踪它，因此「还缺少存储绑定」页重新检查后若缺失列表改变而 mode 不变，提示文案随之更新（原先停留在旧列表，属文案滞留的修正，其余路径不变）。首屏 `index-*.js` 283.81 kB 不变（gzip 96.88 → 96.87 kB）；chunk 列表（31 个文件名）不变，分包体积：Install 6.54 → 6.43、Recover 5.53 → 5.46 kB。
+
+- **runes 迁移第 8e 步：ui/ 与事件分发叶子 6 个组件**（代码审查三轮第 22 项）：迁移前先补行为基线 `tests/unit/uiLeafComponentsBehavior.test.ts`（jsdom，21 项），全部经**真实 legacy 父组件**观察：Switch 在 Basic / Hero / Navigation / Card 四个设置分区里切换后父表单收到的布尔值（原 `e.detail`，Navigation 映射为 wrap / scroll）与禁用联动；InputGroup / Slider 的 `bind:value` 写回先于回调、number 类型写回数字 / 清空写回空串、CategoryDisplay 无回调时由 fieldset 原生 input 冒泡同步；ColorAlphaInput 的 `change` 载荷（GradientBackgroundInput 用它重组渐变）、`bind:value` + `bind:alpha` 拆分 8 位 hex、父组件改 alpha 后选择器跟随、ThemeBackgroundCard 遮罩键盘调整；GradientPresetSelector 的 `select` 载荷为预设对象（整套写回）、`custom` 无载荷、展开切换；Tooltip 展开中改 `text`、卸载取消 rAF；插槽渲染位置：Navigation 的单位下拉、SearchEngine 的图标生成按钮、ThemeBackgroundCard 的 `<svelte:fragment slot="suffix">` 上传按钮，以及 Switch 的默认插槽（新增 `tests/helpers/uiLeaf/` 两个 legacy 替身：`bind:form` 设置分区壳、Switch 默认插槽父组件）。在 legacy 实现上写成并通过，10 种变异（Switch 载荷取反、number 不转数字、预设选择改发 custom、去掉 rAF 取消、不拆 alpha、去掉具名 / 默认插槽、Slider 写回 +1、change 载荷写死、effectiveAlpha 忽略外部 alpha）均有用例精确失败。随后 ui/InputGroup、ui/Slider、ui/Switch、ui/Tooltip、ColorAlphaInput、settings/GradientPresetSelector 改为 runes：`createEventDispatcher` → 回调 prop（Switch `onchange(checked)`、InputGroup / Slider `oninput(value)`、ColorAlphaInput `onchange(value)`、GradientPresetSelector `onselect(preset)` / `oncustom()`，同步、在 `bind:` 写回之后调用，时序与原派发一致）；InputGroup / Slider / Switch 另派发的 `value` / `checked` 事件只为 `bind:` 约定而设、没有任何调用方，删除。**父组件同提交改写**：11 个 legacy 父组件（BookmarkEditModal 无事件仅核对、GradientBackgroundInput、Advanced / Background / Basic / Card / CategoryDisplay / Hero / Navigation / SearchEngine 六个设置分区与 ThemeBackgroundCard）共 39 处调用，`on:x` → `onx`，`event.detail` → 回调参数（GradientBackgroundInput 两个处理器改为接收字符串，Navigation / Background 直接传处理函数）。`$bindable()` 仅用于调用处确有 `bind:` 的 InputGroup / Slider `value`、ColorAlphaInput `value` / `alpha`；Switch `checked` 只被单向传入，保持普通 prop（本地翻转、父组件随后写回同值，同 legacy）。插槽：Switch `<slot />` → `children` + `{@render children?.()}`，legacy 父组件的默认插槽内容可直接作为 `children` 传入（替身验证）；InputGroup `<slot name="suffix" />` → `suffix` snippet prop，**已验证 legacy 父组件的 `slot="suffix"` 与 `<svelte:fragment slot="suffix">` 不会传给 runes 子组件**（只迁移子组件时，基线中 Navigation 与 ThemeBackgroundCard 的后缀用例失败、Switch 默认插槽用例通过），三处调用改为 `{#snippet suffix()}`，snippet 内的 `bind:value`、`on:click`、`{#each}` 的 `engine` / `index` 照常工作。ColorAlphaInput：HSV / 内部透明度 / 解析标志 / `pickerOpen` → `$state`，比较变量 `lastEmitted` / `lastParsedAlphaMode` 与 `dragging`、元素引用保持普通变量；外部值同步的 `$:` → `$effect.pre`（只依赖 `value` / `alpha`，语句体在 `untrack` 中写回 `value` / `alpha` / HSV，自写触发的重跑因 `value === lastEmitted` 为空操作），10 条派生 `$:` → `$derived`，按原拓扑顺序声明在同步语句之后；Slider `display` → `$derived`；GradientPresetSelector `presetsExpanded` → `$state`；Tooltip `open` / `bubbleStyle` 与 `{#if}` 内的气泡引用 → `$state`（DOM 节点不被代理；避免 `non_reactive_update`），store 订阅与 onMount / onDestroy 沿用。全部 `on:` 改事件属性（click / input / change / keydown / pointerdown / pointermove / pointerup 走委托，父组件 fieldset 上 legacy 的 `on:input` / `on:change` 先跑子组件委托处理器，同步顺序不变；mouseenter / focus / blur / pointercancel / lostpointercapture 与 `<svelte:window>` 仍直接挂载）。行为基线迁移后**零改动通过**；既有 `uiComponents.test.ts` / `colorAlphaInput.test.ts` 的 `events:` 订阅随 API 改为回调 prop（Switch 的 change + checked 双事件用例改为「onchange 只回调一次」）；`tests/unit/leafComponentsRunes.test.ts` 扩展为 35 项（6 个组件的 runes 护栏、`$bindable` 与 `{@render}`、39 处父组件调用无 `on:` / `event.detail` / `slot="suffix"`）。开发构建下无新增 `[svelte]` 警告（仍只有 8c 的 9 条 `binding_property_non_reactive`）。已知差异：① prop 由有值变回 `undefined` 时取默认值（同 8c）；被 `bind:` 的 `value` / `alpha` 若父组件绑定源为 `undefined`，runes 抛 `props_invalid_value`（legacy 会把默认值写回父组件）——现有绑定源都是 `createSettingsFormState` / 预设 / 书签表单归一化后的非 undefined 值，不可观察。② 不再提供 `on:value` / `on:checked` / `$on(...)`（无调用方）。③ ColorAlphaInput 的 `effectiveAlpha` 等派生值在处理器内读取时总是最新值。首屏 `index-*.js` 283.80 → 283.81 kB（gzip 96.87 → 96.88 kB）；chunk 列表（31 个文件名）不变，分包体积：ColorAlphaInput 6.41 → 6.09、SettingsPanel 96.03 → 95.32 kB，Admin 69.12 kB 不变（gzip 20.91 → 20.92），LoginModal 2.45 kB 不变（gzip 1.19 → 1.18）。
+
+- **runes 迁移第 8d 步：9 个层级 0 有状态组件**（代码审查三轮第 21 项）：迁移前先补行为基线 `tests/unit/statefulLeafComponentsBehavior.test.ts`（jsdom，34 项）与 `tests/unit/cachedBookmarkIconBehavior.test.ts`（9 项，只替换本地缓存读写 / 可信图标视图 / 可见性观察三个模块边界，按 id 的图标显示覆盖表用真实实现），被父组件 `bind:` 的 prop 经 `tests/helpers/statefulLeaf/` 下三个 legacy 替身父组件验证双向绑定；全部在 legacy 实现上写成并通过，对组件做的 18 种变异（登录框打开不清空 / 开合键恒定、密码上限放宽、引擎菜单不随选择器关闭、默认引擎变更不清手动选择、更新后回调改为只在挂载时、选中后不还焦点、导出选择重复初始化、子分类不排序、HTML 来源不强制合并、状态键变化不复位失败 / 不回收本地 URL、可信视图可见性写死、可信视图接管后仍读本地缓存、快捷键提示写死、分类图标换源不清失败标记、危险样式写死等）均有用例精确失败。随后 BackupPanel、CachedBookmarkIcon、CategoryIcon、CategoryTreeSelect、ConfirmDialog、HomeFloatingActions、LoginModal、PasswordChangePanel、SearchBox 改为 runes，父组件仍为 legacy、调用处零改动：`export let` → `interface Props` + `$props()`（默认值保留）；被 `bind:` 的 CategoryTreeSelect `value`、SearchBox `query`、BackupPanel `importSource` 用 `$bindable()`；模板依赖的本地 `let` → `$state`，整体替换的 Set（导出选择 / 展开集合）与可信图标快照用 `$state.raw`，只在副作用或处理器里用的比较变量（`formKey` / `stateKey` / `lastDefaultEngine` / `userSelected` / `initializedSelection` / `retryAttempt`）保持普通变量；49 条 `$:` → 38 个 `$derived` / `$derived.by` 与 9 个 `$effect.pre`（登录框打开清空、默认引擎变更清手动选择、引擎选择回落、菜单随选择器关闭、导出选择首次初始化、两处 `trustedView.set`、书签图标状态键复位重载、分类图标换源复位），均与原 `$:` 一样先于 DOM 更新、按原拓扑顺序声明；会写入自己所读变量的语句用 `untrack` 只保留原语句的语法依赖；BackupPanel 原先单独就地排序子分类的 `$:` 并入 `childrenByParent` 的 `$derived.by`；CategoryTreeSelect 的 `afterUpdate`（runes 下不可用）改为显式读取全部模板依赖的 `$effect`，内联菜单模式下挂载后与每次更新后仍通知父菜单重新测量；`on:submit|preventDefault` / `on:dragover|preventDefault` 改为处理器内 `preventDefault()`；`on:` 全部改事件属性（click / change / keydown / focusout 走委托，BookmarkContextMenu 的 legacy `on:click|stopPropagation` / keydown 仍先跑内层委托处理器，Escape 先关内层选择器的既有用例通过；`<svelte:window>` 的 keydown / pointerdown 与 submit / drop / load / error 仍直接挂载）。这 9 个组件没有 `<slot>` 与 `createEventDispatcher`。行为基线与各组件原有测试迁移后**零改动通过**；`tests/unit/leafComponentsRunes.test.ts` 扩展为 27 项（9 个组件的 runes 护栏、无 `beforeUpdate` / `afterUpdate`、三个 `$bindable`、`$state.raw`）。已知差异（不可观察）：对象值 `$derived` 按 `===` 判等，legacy 父组件以同一个 `searchEngine` / `category` / 图标行对象重复推送时不再重跑引擎选择回落与关菜单（结果本就不变；就地改写 `engines` 数组的调用方不存在），也不再以相同入参重调 `trustedView.set`（其内部本就按签名去重）；更新后通知只在模板依赖变化时触发，legacy 还会因深读 `items` 内部字段而触发（就地改写 items 的调用方不存在）；prop 由有值变回 `undefined` 时取默认值（同 8c）。首屏 `index-*.js` 284.67 → 283.80 kB（gzip 96.90 → 96.87 kB）；chunk 列表（31 个文件名）不变，分包体积：Admin 70.04 → 69.12、CategoryTreeSelect 8.08 → 7.53、LoginModal 2.60 → 2.45、SettingsPanel 96.06 → 96.03、ColorAlphaInput 6.42 → 6.41 kB，CategoryEditModal 7.09 kB 不变（gzip 3.06 → 3.07）。
+
+- **runes 迁移第 8c 步：14 个层级 0 纯展示组件**（代码审查三轮第 20 项）：迁移前先补行为基线 `tests/unit/leafComponentsBehavior.test.ts`（jsdom，22 项，在 legacy 实现上写成并通过）：AdminSidebar（激活态 / 计数 / 回调换新）、BookmarkCustomIconField（文字 / 图片预览、输入回调、图床按钮与禁用、错误提示）、BookmarkIcon（图片属性与修饰类、文字回退、load / error 转发到当前回调）、BookmarkIconCandidateButton、BookmarkLinkModal（挂到 body、渲染容器外的点击仍触发 onClose、卸载移除）、BookmarkModalActions（删除按钮出现条件、回调收到事件对象、忙碌态）、BookmarkModalHeader、HomeContentSummary、HomeEmptyPanel、LogoSchemeSelector（仅 `logo_surf` 时标记选中）、AdminPageHeader（登录 / 登出 / 返回首页与禁用）、FooterSettingsSection（经 SettingsPanel 的 `bind:form`：输入写回父表单、脏状态往返、保存 payload、saving 禁用）；AppSplash、DeviceIconCachePanel 与 BookmarkIcon 超时沿用既有测试。随后 14 个组件（AdminSidebar、AppSplash、BookmarkCustomIconField、BookmarkIcon、BookmarkIconCandidateButton、BookmarkLinkModal、BookmarkModalActions、BookmarkModalHeader、DeviceIconCachePanel、HomeContentSummary、HomeEmptyPanel、LogoSchemeSelector、admin/AdminPageHeader、settings/FooterSettingsSection）改为 runes（`<svelte:options runes />`），父组件仍为 legacy、调用处零改动：`export let` → 带 `interface Props` 的 `$props()` 解构（默认值逐个保留，回调 prop 由 `= undefined` 改为可选）；SettingsPanel 以 `bind:form` 绑定的 FooterSettingsSection `form` 用 `$bindable()`；DeviceIconCachePanel 的 `busy` / `localError` 改 `$state`（`$iconDevice` 等 store 订阅沿用）；全部 `on:` 改事件属性（`onclick` / `oninput` / `onchange` 走事件委托，委托监听同时挂在挂载根与 `document` 上，BookmarkLinkModal 移到 body 后的点击仍可达，已有用例；`onerror` / `onload` 不委托，仍直接挂在 `<img>` 上）；`class:` / `style` / `use:` 原样保留。这 14 个组件没有 `$:`、`<slot>`、`createEventDispatcher`、`$$props` / `$$restProps`。行为基线测试迁移后**零改动通过**；新增 `tests/unit/leafComponentsRunes.test.ts`（16 项源码护栏，迁移前 16 项全部失败）。已知差异：① runes 下 prop 由有值变回 `undefined` 时取默认值，legacy 下保持 `undefined`；现有父组件传入的都是非 undefined 的类型化值，不可观察。② `bind:value={form.footer_html}` 等三处在开发构建下报 `binding_property_non_reactive` 警告（`form` 来自 legacy 父组件、不是 `$state` 代理），属误报：写入经 `$bindable` 的 setter 通知 legacy 父组件，行为与原先一致（基线用例覆盖），生产构建不输出；SettingsPanel 在 8j 改用 `$state` 后消失。首屏 `index-*.js` 284.67 kB 不变（gzip 96.83 → 96.90 kB）；chunk 列表（31 个文件名）不变，分包体积：Admin 70.22 → 70.04、SettingsPanel 96.14 → 96.06、BookmarkEditModal 17.55 → 17.31、CategoryTreeSelect 8.09 → 8.08、LoginModal 2.59 → 2.60、ColorAlphaInput 6.41 → 6.42 kB。
+
+- **`App.svelte` runes 迁移第 8b 步：App 改为 runes 模式**（代码审查三轮第 19 项）：只迁移 `src/App.svelte`（`<svelte:options runes />`），子组件保持 legacy（Svelte 5 支持混用）。控制器经 `onChange` 写入的状态与其余模板状态改为 `$state`，其中对象值（`installState` / `activeCategory` / `activeBookmark` / `importExportState` / `confirmDialog` / `viewBookmark` / `customScriptController`）用 `$state.raw`：不做深层代理，子组件拿到的仍是控制器的原对象，同引用赋值即空操作（原有的身份守卫保留为显式意图）；21 条 `$:` 改为 15 个 `$derived`（安装视图、三份 store 数据、`canSeeHome`、标题、后台适配、主题状态与背景 / 预设 / 自定义 CSS 输入）与 6 个 `$effect.pre`（Install / Recover 懒加载、登录闸门、主题与根变量写入、自定义 CSS、自定义脚本）：一律用 `.pre`，与原先 `$:` 一样在同一次刷新中先于 DOM 更新执行，登录闸门因此不会先渲染一帧后台 splash；`<svelte:component this={$X}>` 改为由懒加载 store 派生的动态组件（`RecoverPage` / `InstallPage` / `AdminPage` / `LoginModal` / `BookmarkEditModal` / `CategoryEditModal` / `SearchSpotlight`）；`<svelte:window on:keydown>` 改为 `onkeydown`；`$store` 订阅（`$configStore` / `$publicStore` / `$adminStore` / `$authStore` / `$isAuthenticated` 与 7 个懒加载 store）沿用。第 18 项的组件级测试（含紧随其后加强的闸门时机断言：检查每个被插入 / 移除的节点）**零改动通过**；对迁移后的 App 反向验证：闸门改用 `$effect`（DOM 之后）、`installState` 或 `activeBookmark` 改用会深层代理的 `$state` 均有用例精确失败。已知差异（不可观察）：对象值 `$derived` 按 `===` 判等，store 以同一个 `data` 对象重复推送时不再把相同对象重推给 Home / Spotlight / Admin、也不再以相同内容重调 `customScript.apply`（控制器本就幂等）；从回调中读取派生值（`getAdminData` / `getCanSeeHome` / 快捷键与切换主题时的读取）总是最新值，legacy 下在 store 写入后、下一次刷新前的同一同步段内可能读到旧值，现有调用点都在 await 或用户事件之后；两条懒加载副作用移到派生值之后声明（`$effect.pre` 创建时即同步执行，需避开 TDZ），执行顺序与原 `$:` 拓扑排序结果一致。`customScript.test.ts` 的接线断言由 `$:` 字面量改为匹配新写法（注释指向组件级测试）；新增 `tests/unit/appRunes.test.ts`（3 项源码护栏：runes 开关、无 `$:` / `<svelte:component>` / `on:`、对象值用 `$state.raw`、6 个 `$effect.pre` 且无 `$effect`）。首屏 `index-*.js` 285.51 kB → 284.67 kB（gzip 96.95 kB → 96.83 kB）；chunk 列表（31 个文件名）不变，除 `index` 外只有 `LoginModal-*.js` 2.60 → 2.59 kB（从 `index` 导入的压缩别名改名）。64 个 `export let` 子组件的分批计划（8c–8j，按目录、叶子优先）见 `docs/reference/APP_SPLIT_PLAN.md`。
+
+- **`App.svelte` runes 迁移第 8a 步：组件级行为基线测试**（代码审查三轮第 18 项）：新增 `tests/unit/appComponent.test.ts`（jsdom，34 项），在 runes 迁移前真实挂载 `src/App.svelte` 并钉住其响应式部分的可观察行为。只替换模块边界：启动 / 分类 / 书签 / 设置 / 认证五个控制器换成可手动推送 `onChange` 的替身（方法为可识别的 `vi.fn`，断言模板接线到的正是控制器方法），`dataService` 换成记录回调的替身、全局 `fetch` 一经调用即失败，7 个懒加载组件与 Home / Toast / ConfirmDialog / BookmarkLinkModal 换成新增的 `tests/helpers/appProbe/`（runes 写的 `AppProbe.svelte`：记录父组件传入的 props 与每个 prop 的重新传入次数）且分包可编排为成功 / 失败 / 挂起，媒体查询、图标设备、焦点刷新与自定义脚本控制器换成替身；stores 与 `rootStyleWriter`（外包一层记录调用）用真实实现。覆盖：启动 splash 与外壳揭开、Home / Admin / 登录 splash / 后台 splash 与各懒加载模态的动态组件切换及全部 props（含 `homeTitle` 回落链、`settingsLoading`、`deleting`、`categoryCreateReturnToHome` 才挂载 `CategoryEditModal`）；控制器对象身份守卫（同一 `active` / `importExport` / `installState` 对象再次推送不重新传给子组件、换对象才重传且身份不变）；登录闸门（启动中 / 非首页不触发、私密站点揭开或失去访问权时触发且同一次刷新内切到登录视图，DOM 从未出现后台 splash 或首页（按 MutationObserver 记录的插入与移除节点检查，中途渲染又被替换的视图也会被发现）；安装状态下同样触发）；主题（站点配置 / 系统深色 / 挂载时读本地偏好 / 切换写本地偏好）与根元素 `data-theme` / `data-background-preset` / 背景变量 / `custom-css-inject` 写入，以及点击计数等无关变化不重跑写入、只在各自输入变化时重跑；减少动态效果时跳过外壳入场动画；自定义脚本控制器挂载时创建、`custom_js` 应用、切主题不重跑、`publicData` 换对象时以当前内容再调用、卸载销毁；Install / Recover 懒加载（找回优先、已加载不重载、加载失败提示在 booting 切换 / 其它分包加载 / store 变化 / 根错误等无关更新下保持，安装状态换对象时清掉并重试）；Ctrl+K / Cmd+K / 「/」 / Esc 快捷键、输入框与非首页忽略、模态打开时不唤起、分包加载期间打开模态则不再唤起、书签查看框；确认框、`rootError` 与 dataService 三个回调；共享依赖读写当前状态；onMount / onDestroy（图标设备、系统深色订阅、`boot.start()` 返回 false 时不装焦点刷新、卸载移除全局 keydown）。已做变异验证：去掉闸门的视图切换、闸门改为异步切换、去掉 `installState` / `activeCategory` 身份守卫、`custom_js` 语句依赖主题、自定义 CSS / 主题写入依赖整个 `publicData`、标题回落顺序对调、Install 加载条件去掉 `!recoverActive`、忽略系统深色、忽略减少动态效果、去掉快捷键 `preventDefault`、去掉 Spotlight 加载后的复核、卸载不停焦点刷新等 14 种改动均有用例精确失败。仅新增测试，源码不变；首屏 `index-*.js` 285.51 kB（gzip 96.95 kB）与 chunk 列表（31 个文件名）不变。
+
+- **`App.svelte` 拆分第 7d 步：抽出认证用例控制器**（代码审查三轮第 17 项）：打开 / 关闭登录框、登录（失败交由 authStore 记录、不抛出；`/admin` 下载入后台）、登出（撤销失败的提示在视图切换后弹出；发起后被更新的登录 / 找回操作作废则不再切换视图或报错）、进入后台、忘记密码，以及登录态数据加载 `ensureLoggedInDataLoaded`（401 时清会话 / adminStore / 缓存、刷新公开数据并打开登录框）、变更后刷新与统计页刷新移入 `src/lib/appAuthController.ts` 的 `createAuthController(deps)`（与既有的纯函数同文件）。控制器不持有状态：`loginModalOpen` / `currentView` / `rootError` 仍归 App 经回调写入，`canSeeHome` 经 `getCanSeeHome`、`get(adminStore)` 经 `readAdminState`、公开模式经 `getPublicMode` 在原先的时机读取，认证视图意图仍由 App 创建并注入（改密也作废它）；登出经注入的 `resetCategories` / `resetSettings` / `resetBookmarks` 按原顺序（分类 → 设置 → 书签）重置。打开登录 / 进入后台 / 登录三个原先套了一层 async 的处理器保留包装，兑现时机逐个微任务一致。认证控制器最后创建，共享依赖 `appDeps` 中的 `openLogin` / `ensureLoggedInDataLoaded` / `refreshAdminDataAfterMutation` 改为转发给它的箭头函数（返回同一个 promise），`replacePath` 也并入 `appDeps`。语句顺序与 await 位置逐条保持，**无行为变化**。App.svelte 767 → 616 行；首屏 `index-*.js` 284.60 kB → 285.51 kB（gzip 96.76 kB → 96.95 kB，+0.91 kB）；chunk 列表（31 个文件名）不变，除 `index-*.js` 外只有 `LoginModal-*.js` 由 2.59 kB 变为 2.60 kB（仅为其从 `index` 导入的压缩导出别名改名，代码未变）。新增 `tests/unit/appAuthUseCases.test.ts`（39 项：38 个场景覆盖数据加载未登录 / 已就绪 / 缺设置刷新 / 未就绪 / 刷新中登出 / 401 / 其它错误 / 处理 401 时失败、变更后刷新成功 / 失败、统计页与其它标签、打开登录（公开 / 私密 / 分包失败）、关闭登录（公开 / 私密）、登录（首页 / `/admin` / 失败吞掉 / 刷新失败吞掉）、登出（公开 / 私密 / 撤销失败提示 / 会话未清 / 清缓存期间重新登录 / 无原设置 / 撤销中被打开登录作废 / 载入登录框时被找回作废 / 失败报错 / 作废后失败不报错）、进入后台（未登录 / 成功 / 数据加载失败 / 会话过期 / 分包失败）、忘记密码，以及 7 个处理器并发时的兑现顺序；每个场景同时驱动控制器与逐字复刻的原 App 实现，比对依赖调用序列（含登录态 / adminStore / 公开模式 / canSeeHome 读取、认证视图意图 begin / invalidate、toast 与每次调用时的完整状态快照）、最终状态与 promise 结果；另 1 项 App 接线；已反向对照：登出重置顺序对调、去掉打开登录或进入后台的 async 包装、401 不打开登录、数据加载改为强制刷新、登出去掉意图复核、去掉撤销提示、原设置改在撤销之后读取、登录失败不再吞掉、关闭登录 / 忘记密码不作废意图、路径与视图写入顺序对调、任意标签都刷新、清缓存后不复核登录态、变更后刷新失败改为抛出、私密站点不切登录视图等 16 种改动均有用例精确失败）。
+
+- **`App.svelte` 拆分第 7c 步：抽出设置 / 改密 / 导入导出控制器**（代码审查三轮第 16 项）：设置保存（`runAdminMutation`：保存中 / 错误 / 本地应用 / 「设置已保存」提示）、修改密码（失败原样抛给改密面板；成功后作废认证视图意图、清会话，按原顺序重置分类编辑框 → 设置状态 → 书签编辑框 → adminStore、清缓存，再提示重新登录并打开登录框）、导出与导入（导入时读取当下的 `adminData`，成功且无错误时变更后刷新）以及设置 / 导入导出状态移入 `src/lib/appSettingsController.ts` 的 `createSettingsController(deps)`。形态与第 7a / 7b 步相同：普通闭包 + `onChange`（不新增 store 订阅），控制器持有 `saving` / `error` / `importExport`，App 只在 `importExport` 换了对象时才赋值；`rootError` / `loginModalOpen` / `currentView` 仍归 App 经回调写入；登出中的 `resetSettingsState()` 改为 `settingsController.reset()`，位置不变。`authViewIntent` 改为由 App 在各控制器之前创建并注入。**体积**：App 新增共享依赖对象 `appDeps`（同名同义的依赖只写一次），以展开方式传给启动、分类、书签与设置四个控制器，原先每个控制器各写一遍的 `api` / `isLoggedIn` / `ensureLazyComponent` / `setRootError` 等未压缩属性名不再重复；新控制器在入口一次性解构依赖，方法体内不再重复 `deps.xxx`。语句顺序与 await 位置逐条保持，**无行为变化**。App.svelte 835 → 767 行；首屏 `index-*.js` 284.12 kB → 284.60 kB（gzip 96.47 kB → 96.76 kB，+0.48 kB，此前每个控制器约 +1.75 kB）；chunk 列表（31 个文件名）与除 `index-*.js` 外每个 chunk 的体积均不变。新增 `tests/unit/appSettingsController.test.ts`（26 项：23 个场景覆盖保存成功 / 失败 / 本地应用失败 / 重提清错误 / 保存中被重置 / 重置清错误、改密成功 / 重置顺序 / 请求失败 / 清缓存失败 / 登录分包失败、导出成功 / 失败 / 导出中再次导出 / 导入后导出沿用状态、导入成功 / 取消 / 失败 / 持久化失败 / 刷新失败抛出 / 导出后取消导入 / 成功文案后报错不刷新 / 按调用时的 `adminData`；每个场景同时驱动控制器与逐字复刻的原 App 实现，比对依赖调用序列（含 toast / console.warn 与每次调用时的完整状态快照）、最终状态与 promise 结果，并核对 App 经 `onChange` 拿到的状态与控制器内部一致；另 2 项推送序列 / 导入导出状态对象身份，1 项 App 接线；已反向对照：改密重置顺序对调、不作废认证视图、提示早于清缓存、保存不清错误、导出改传新状态对象、reset 漏推送、保存失败漏推送、刷新判断忽略错误、缓存首次 `adminData` 等 9 种改动均有用例精确失败）。
+
+- **`App.svelte` 拆分第 7b 步：抽出书签用例控制器**（代码审查三轮第 15 项）：书签的打开新建（未指定分类时落到第一个分类）、读取原始数据打开编辑（加载 `BookmarkEditModal` 后复核登录、会话与编辑意图，打开后后台补图）、关闭、提交（新建 / 更新，发起会话作废后不再应用 / 刷新 / 补图 / 提示）、删除、批量删除、批量移动（失败重新抛出）、排序（乐观排序队列）、跨分类整理（失败先回滚到服务端数据再抛出原始错误）以及书签表单状态移入 `src/lib/appBookmarkController.ts` 的 `createBookmarkController(deps)`。形态与第 7a 步相同：普通闭包 + `onChange`（不新增 store 订阅），控制器持有 `modalOpen` / `modalMode` / `active` / `saving` / `deletingId` / `error` 与书签排序队列，App 只在 `active` 换了对象时才赋值；`rootError` 仍归 App 经回调写入；会话经注入的 `getSession`（即 `get(authStore).session`，按引用比较）、默认分类经 `readAdminData`（即 `get(adminStore).data`，仍只在未指定分类时读取）在原先完全相同的时机读取；与分类控制器注入**同一个** `createEditIntentCounter()` 实例，任一方打开 / 重置编辑框仍会作废另一方正在读取的编辑。语句顺序与 await 位置逐条保持，**无行为变化**（包括原有边界语义：提交中途登出时不清 `saving`、无会话时提交永不收尾）。App.svelte 979 → 835 行；首屏 `index-*.js` 282.37 kB → 284.12 kB（gzip 96.27 kB → 96.47 kB，+1.75 kB 主要为依赖注入对象的未压缩属性名）；chunk 列表（31 个文件名）与除 `index-*.js` 外每个 chunk 的体积均不变。新增 `tests/unit/appBookmarkController.test.ts`（47 项：44 个场景覆盖未登录 / 数据未就绪 / 指定或默认分类 / 无分类 / 分包加载失败、编辑成功 / 未登录 / 无数据 / 已不存在 / 分包失败 / 读取或加载期间被共享计数作废 / 会话变化 / 登出 / 作废后失败不报错、关闭、提交新建 / 更新 / 失败 / 请求中登出 / 本地应用或刷新期间换会话 / 无会话 / 表单异常、删除取消 / 成功（从编辑框）/ 失败、批量删除空 / 取消 / 成功 / 无删除不刷新 / 失败、批量移动成功 / 失败抛出 / 刷新失败抛出、排序成功 / 失败回滚 / 回滚再失败告警 / 重叠排序、整理成功 / 失败回滚后抛原错误 / 回滚失败抛回滚错误、重置；每个场景同时驱动控制器与逐字复刻的原 App 实现，比对依赖调用序列（含会话 / adminStore 读取、后台补图、toast、console.warn 与每次调用时的完整状态快照）、最终状态与 promise 结果；另 1 项推送序列 / 表单对象身份，2 项分类与书签控制器共用计数器互相作废；已反向对照：reset 不推进计数、改用私有计数器、新建前不推送清错误、无条件读取默认分类、编辑去掉会话比较、推送前补图、提交本地应用后不复核会话、`isCurrent` 放过 null 会话、删除成功不重置表单、批量移动不再抛出、批量删除漏推送、排序本地应用改为重新拉取、整理失败不回滚 / 吞掉错误等 14 种改动均有用例精确失败）。
+
+- **`App.svelte` 拆分第 7a 步：抽出分类用例控制器**（代码审查三轮第 14 项）：分类的打开新建（含从首页 / 根分类新建与懒加载 `CategoryEditModal` / `Admin`）、读取原始数据打开编辑、关闭、提交（新建 / 更新、从首页新建后回到首页并跨两次 `tick` 聚焦新分类）、删除（按当前 `adminData` 统计直属书签 / 子分类数量的确认）、批量删除、同级排序（乐观排序队列）以及分类表单状态移入 `src/lib/appCategoryController.ts` 的 `createCategoryController(deps)`。与 `appConfirmDialog` / `appBootController` 一致用普通闭包而非 store（不新增任何 store 订阅）：控制器持有 `modalOpen` / `modalMode` / `active` / `saving` / `deletingId` / `error` / `createReturnToHome` 与分类排序队列，每次赋值后经 `onChange` 推送快照，App 只在 `active` 换了对象时才赋值（Svelte 对对象的同引用赋值也会触发依赖，避免把同一份表单值再推给编辑框）；`rootError` / `currentView` / `homeFocusCategoryId` 仍归 App，经回调在原先完全相同的时机写入；api、登录 / 数据加载、懒加载、确认框、`dataService` 本地应用与刷新、`tick` 全部依赖注入，`import()` 字面量仍留在 App。分类与书签共用的 `editIntent` 计数器抽为 `src/lib/appEditIntent.ts` 的 `createEditIntentCounter()`（`next()` / `current()`），App 只创建一个实例注入分类控制器，书签代码改用同一实例，保持「打开 / 重置任一编辑框都会作废另一方仍在读取的编辑」的原语义。三个原先套了一层 async 的处理器（新建根分类 / 编辑 / 提交）同样保留包装，兑现时机逐个微任务一致。语句顺序与 await 位置逐条保持，**无行为变化**。App.svelte 1103 → 979 行；首屏 `index-*.js` 280.60 kB → 282.37 kB（gzip 95.73 kB → 96.27 kB，+1.77 kB 主要为依赖注入对象与状态快照的未压缩属性名）；chunk 列表（31 个文件名）与除 `index-*.js` 外每个 chunk 的体积均不变。新增 `tests/helpers/useCaseWorld.ts`（可编排、可挂起的依赖替身世界，记录每次依赖调用的参数与当时完整状态）与 `tests/unit/appCategoryController.test.ts`（41 项：39 个场景覆盖未登录 / 数据未就绪 / 从后台或首页新建 / 覆盖参数 / 分包加载失败、编辑成功 / 无数据 / 已不存在 / 读取失败 / 被书签侧共享计数作废 / 作废后失败不报错 / 重叠编辑、关闭、提交新建 / 更新 / 回到首页聚焦 / 接口失败 / 本地应用失败 / 表单异常 / 提交中被重置、删除取消 / 成功 / 计数取自调用时数据 / 失败、批量删除空 / 取消 / 成功 / 无删除不刷新 / 仅删书签仍刷新 / 失败、排序成功 / 失败回滚 / 回滚再失败告警 / 重叠排序只由最新一次持久化或报错、重置；每个场景同时驱动控制器与逐字复刻的原 App 实现，比对依赖调用序列（含 toast / console.warn 与每次调用时的完整状态快照）、最终状态与 promise 结果，并核对 App 经 `onChange` 拿到的状态与控制器内部一致；另 2 项推送序列 / 表单对象身份与注入计数器共享；已反向对照：reset 不推进计数、批量删除 / 删除收尾漏推送、reset 后才读「从首页新建」、调换 reset 与本地应用、去掉一次 `tick`、编辑去掉意图比较、改用私有计数器、回滚刷新不带 `true`、删除确认数量对调、`??` 改 `||`、排序 / 打开新建不清错误等 13 种改动均有用例精确失败）；`confirmationFlow` 的分类删除断言改为检查控制器源码并确认 App 经由控制器接线。
+
+- **安装页「重新检查」按钮跳过安装探测**（代码审查三轮第 13 项）：`Install.svelte` 的「重新检查安装状态」/ 配置引导按钮以 `on:click={onRetryStatus}` 接线，App 又把 `boot.initializeApp` 直接作为 `onRetryStatus` 传入，点击时 MouseEvent 落到 `initializeApp(installStatusKnown)` 的参数上并按真值处理：重试跳过安装探测、`installState` 不被重置，状态错误后若数据加载恰好成功，安装页会一直留在屏幕上。现控制器新增无参的 `retryInstallStatus()`（等价于 `() => initializeApp()`），App 改为 `onRetryStatus={boot.retryInstallStatus}`，按钮传入的事件对象不再流入；安装完成后内部的 `initializeApp(true)` 不变。`appBootController.test.ts` 中记录旧行为的用例（「事件对象重试跳过探测」）改为断言修复后的行为：带事件对象点击重试会再次探测、探测前 `installState` 重置为 `checking`、探测成功后安装页消失并进入首页；另增 1 项探测仍失败时显示新的状态错误且不加载数据（已反向对照：把事件对象转交 `initializeApp` 后 2 项精确失败）；`appInstall` 接线断言增加 App 使用 `boot.retryInstallStatus`、不再直接传 `boot.initializeApp`。首屏 `index-*.js` 280.57 kB → 280.60 kB（gzip 95.72 kB → 95.73 kB），chunk 列表（31 个文件名）不变。
+
+- **`App.svelte` 拆分第 6 步：抽出启动 / 安装 / 找回流程控制器**（代码审查三轮第 12 项）：初次加载、安装探测（`checkInstallStatus` / 本地「装过」标记 / 过期标记复核 `recheckInstallAfterDataError`）、安装提交与「请求失败但已提交」兜底、`enterInstalledApp`、`initializeApp` 的数据加载与首页 / 登录闸门 / 后台分支、本地快照提前揭开首页、找回密码的进入 / 完成 / 前往安装 / 返回，以及启动错误后的「重新检查」移入 `src/lib/appBootController.ts` 的 `createAppBootController(deps)`。与 `appConfirmDialog` 一致用普通闭包而非 store（不新增任何 store 订阅）：控制器持有 `booting` / `installState` / `recoverActive` 与最近一次数据加载异常，每次赋值后经 `onChange` 推送快照，App 只在 `installState` 换了对象时才赋值（Svelte 对对象的同引用赋值也会触发依赖，避免 `booting` 变化连带重跑 `installView` 与 Install 分包加载语句）；与其它用例共享的 `rootError` / `currentView` / `loginModalOpen` 仍归 App，经注入的读写回调在原先完全相同的时机读写；api / 本地存储 / 路径 / 缓存清理 / 认证与数据刷新 / 懒加载全部依赖注入，`import()` 字面量仍留在 App。语句顺序与 await 位置逐条保持，**无行为变化**，包括原有的边界语义：不加「过期响应」防护（并发启动各自跑完、按完成顺序覆盖状态，较早的启动先完成即揭开应用）；安装页「重新检查」按钮直接以 `on:click={initializeApp}` 接线，收到的事件对象按真值处理会跳过安装探测（原样保留，见下）。App.svelte 1280 → 1104 行；首屏 `index-*.js` 279.08 kB → 280.57 kB（gzip 95.17 kB → 95.72 kB，+1.49 kB 主要为依赖注入对象与控制器方法的未压缩属性名，已把可直传的函数改为直传）；chunk 列表（31 个文件名）与除 `index-*.js` 外每个 chunk 的体积均不变。新增 `tests/unit/appBootController.test.ts`（56 项：52 个场景覆盖安装探测各状态 / 无 window / 存储不可用、匿名与登录态加载、401 清会话、服务端错误复核（转安装页 / 已安装 / 探测失败）、网络错误不复核、认证初始化失败、懒加载失败、安装成功 / 已提交兜底 / 失败回到待安装 / 重复提交忽略、重试与事件对象重试、并发启动乱序完成、本地快照揭开、找回各出口；每个场景同时驱动控制器与逐字复刻的原 App 实现，比对依赖调用序列（含每次调用时的完整状态快照）、最终状态与 promise 结果；另 2 项推送序列 / 对象身份，2 项浏览器存储读取；已反向对照：真值判断改为 `=== true`、加入代次防护、调换找回完成 / 进入应用顺序、不清 `lastDataError`、找回重启不重置 `installState`、调换记标记与设会话顺序、去掉 `rootError` 闸门、写死路径、调换推送顺序等 9 种改动均有用例精确失败）；`appInstall` 的接线断言改为检查控制器源码并确认 App 经由控制器启动。另记录一个既有问题（本项不修）：「重新检查安装状态」按钮把 MouseEvent 传给 `initializeApp(installStatusKnown)`，导致重试跳过安装探测、`installState` 不被重置，状态错误后若数据加载恰好成功，安装页会一直留在屏幕上（已由第 13 项修复）。
+
+- **`App.svelte` 拆分第 5 步：懒加载组件注册表**（代码审查三轮第 11 项）：7 个 `let XxxComponent` + 7 段 `createLazyComponentLoader` 样板收进 `src/lib/appLazyComponent.ts` 的 `createLazyComponentRegistry(loaders)`（`components`：每个组件一个只读 store，初值 null、加载成功推送一次；`ensure(name)`：每个组件内部仍由 `createLazyComponentLoader` 负责，并发共享一个 promise、已加载不重载、失败原样抛出并清掉 pending 以便重试）。路径仍以 `() => import('./views/Admin.svelte')` 等**字面量**写在 App 中，注册表只接收函数、不拼路径，Vite 分包不变；模板与两条 `$:` 改读 `$AdminComponent` 等。刻意按组件拆 store 而不是一个汇总对象：`$:` 只依赖自己关心的那个组件，其它组件加载完成不会让「Install / Recover 加载失败」的分支重跑并清掉错误提示，与原先 7 个独立变量的依赖关系一致。**无行为变化**。App.svelte 1321 → 1280 行；首屏 `index-*.js` 278.60 kB → 279.08 kB（gzip 95.03 kB → 95.17 kB，+0.48 kB 为 Svelte store 自动订阅的编译产物与注册表循环）；chunk 列表（31 个文件名）与除 `index-*.js` 外每个 chunk 的体积均与拆分前一致，`index` 中 9 条动态 `import("./…")` 不变。新增 `tests/unit/appLazyComponentRegistry.test.ts`（7 项：不预加载、并发共享 pending 且只推送一次、await 后已可读、加载后不重载不重推、失败传播同一错误对象且 store 保持 null 并可重试、组件间互不影响、store 只读；已反向对照：去掉 store 推送后 5 项精确失败），`firstScreenChunks` 增加 1 项断言 7 个组件都保持字面量 `import()`、无静态导入（已反向对照：加静态导入后精确失败）。
+
+- **`App.svelte` 拆分第 4 步：抽出确认对话框控制器**（代码审查三轮第 10 项）：`requestConfirmation` / `closeConfirmDialog` 的 resolver promise 状态机移入 `src/lib/appConfirmDialog.ts` 的 `createConfirmController(onChange)`（`request(input) → Promise<boolean>`、`close(confirmed)`、`getState()`），与仓库其它控制器一致用普通闭包而非 store，App 只保留 `confirmDialog` 一个模板状态并在 `onChange` 中赋值。单 resolver 语义逐条保持：新请求先以 false 兑现仍待决的旧请求，再登记新 resolver 并同步推送新状态（两者之间不推送 null，被顶替方恢复执行时新确认框已打开）；close 先摘 resolver、推送 null，再兑现，重复 close 不会重复兑现，没有待决请求时也照常推送 null。**无行为变化**。App.svelte 1331 → 1321 行；首屏 `index-*.js` 278.48 kB → 278.60 kB（gzip 94.98 kB → 95.03 kB，+0.12 kB 为控制器对象与 `getState`），chunk 列表（31 个文件名）不变。新增 `tests/unit/appConfirmController.test.ts`（13 项：7 项语义用例，含重叠请求顶替、被顶替方在回调中再次请求、重复 close；6 项与逐字复刻的原 App 实现做差分对照，比对状态推送序列与兑现顺序；已反向对照：交换 close 中推送 null 与兑现的顺序、或在 request 中插入 null 推送后 9 项精确失败）。
+
+- **`App.svelte` 拆分第 3 步：splash 模板去重**（代码审查三轮第 9 项）：启动 / 安装 / 找回加载、未公开站点的登录闸门、后台分包加载三段几乎相同的 splash 模板（各约 30 行 SVG + 文案）合并为 `src/components/AppSplash.svelte`，差异收进 props：`gradientId`（`splash-spinner-grad-boot` / `-login` / `-admin`，保持原 id 与 `stroke` 引用）、`title` / `message`（启动段仍按 `lazyViewError` 切换「页面加载失败」与错误文案）、`loading`（`app-splash-card--loading` 修饰类与 `role="status"` / `aria-live="polite"` / `aria-busy="true"`，登录闸门不带）、`progress`（进度条两侧文案，登录闸门为 null 不渲染）。组件不带 `<style>`，样式仍为 `app.css` 中的全局 `.app-splash*` 规则；渲染的元素、类名、属性与文本与原模板一致，**无行为变化**。App.svelte 1394 → 1331 行；首屏 `index-*.js` 279.49 kB → 278.48 kB（gzip 94.84 kB → 94.98 kB：重复模板原本压缩率高，去重后 gzip 反增 0.14 kB，未压缩体积减少 1.01 kB）。新增 `tests/unit/appSplash.test.ts`（5 项：启动、启动加载失败分支、登录闸门、后台加载四种变体逐一与合并前 App 模板逐字摘录的标记做 DOM 等价比对（不计属性顺序、忽略纯空白文本），以及渐变 id 与 SVG 命名空间；已反向对照：改动 `aria-busy` 输出后登录闸门用例精确失败）。
+
+- **`App.svelte` 拆分第 2 步：抽出系统外观媒体查询**（代码审查三轮第 8 项）：把 onMount / onDestroy 中 `prefers-color-scheme: dark` 的订阅与 `prefers-reduced-motion: reduce` 的读取抽到 `src/lib/appMediaPreferences.ts`（`subscribeSystemDark(onChange) → stop`：挂载时立即以当前值同步回调一次，之后随系统变化回调，stop 移除同一个监听；`readReducedMotion()`：只在挂载时读一次）。没有 `window` / `matchMedia`（SSR、jsdom）时安全降级：读取为 false、订阅不回调并返回空操作的 stop。与原实现一致只用 `addEventListener('change')`（原实现没有旧版 `addListener` 兼容，这里也不加），App 只保留 `stopSystemDark` 一个句柄，**无行为变化**。App.svelte 1401 → 1394 行；首屏 `index-*.js` 279.39 kB → 279.49 kB（gzip 94.84 kB，+0.10 kB 为模块函数包装）。新增 `tests/unit/appMediaPreferences.test.ts`（jsdom + matchMedia 替身，5 项：读取减少动态效果、初值同步回调与跟随变化、stop 移除同一监听且之后不再回调、不调用旧版 `addListener`、无 matchMedia 降级）与 `appMediaPreferencesSsr.test.ts`（node 无 window，1 项）。
+
+- **开始拆分 `App.svelte`：抽出全局快捷键决策**（代码审查三轮第 7 项）：新增拆分计划 `docs/reference/APP_SPLIT_PLAN.md`（职责分组与行号、8 个可独立发布的有序提取步骤；项目已在 Svelte 5 但处于 legacy 模式，runes 迁移列为拆分完成后的独立阶段）。第 1 步把 `handleGlobalKeyDown` 中的按键判定（Ctrl+K / Cmd+K 切换、「/」 打开、Esc 关闭 Spotlight；排除输入框 / 文本域 / contenteditable、IME 组合与 `Process` 键；仅首页可见时生效）抽到纯函数模块 `src/lib/appShortcuts.ts`（`resolveGlobalShortcut` / `isTypingTarget`），App 只负责 `preventDefault` 与打开 / 关闭，模态互斥仍由 `openSpotlight` 把关，**无行为变化**。App.svelte 1415 → 1401 行；首屏 `index-*.js` 279.23 kB → 279.39 kB（gzip 94.85 kB，+0.16 kB 为新增导出函数与动作字面量）。新增 `tests/unit/appShortcuts.test.ts`（8 项）。
+
+- **引入 ESLint 与 `.editorconfig`**（代码审查三轮第 6 项）：新增 `eslint.config.js`（ESLint 9 flat config；`@eslint/js` + `typescript-eslint` 8 非 type-aware + `eslint-plugin-svelte` 3 的 recommended；选 ESLint 9 而非 10 是因为 10 要求 Node 22.13+，与 `engines` 的 22.12 下限不符），覆盖 `worker/`、`src/`、`shared/`、`tests/`、`scripts/`（Node 全局）与 `public/sw.js`，`npm run lint`（`--max-warnings 0`）并在 CI 的 Type check 之前新增 Lint 步骤。为免大面积改动关闭 / 收窄的规则（原因写在配置注释）：`svelte/infinite-reactive-loop`（38 处启发式误报）、`svelte/prefer-svelte-reactivity`（15 处）、`svelte/require-each-key`（9 处，补 key 会改变 DOM 复用，属行为变化）、`tests/` 的 `no-explicit-any`（约 100 处测试替身）、`scripts/` 的 `no-unsafe-finally` / `no-debugger`（清理失败须抛出、CDP 暂停点）、TS 文件的 `no-undef`；`no-unused-vars` 与 tsconfig 同用 `_` 前缀约定，`no-empty-object-type` 放行单一 extends 的具名接口；Svelte recommended 规则收窄到 `.svelte` / `.svelte.{ts,js}`（其 `no-inner-declarations` 在 CommonJS 脚本上会崩溃）。按现有代码修复的问题（均无行为变化）：`buildHomeBackground` 中 `Number(mask) ?? 0.3` 的 `??` 永远不生效（`Number()` 不返回 null/undefined；`mask` 已在读写两端归一为数字），删去死代码；`worker/lib/jwt.ts` 5 处 `as any` 改为准确类型（`decodeBase64url` 返回 `Uint8Array<ArrayBuffer>`）；`sortableList` 的 `@ts-ignore` 改为 `@ts-expect-error`；`errorMonitor` 的 `_batch` 改 `const`；`iconData` 两处正则里的字面 BOM 改为 `\uFEFF` 转义；两个设置组件中依赖为常量的 `$:` 改为 `const`；`Home.svelte` 无插值的模板字符串 style 改为普通属性；`scripts/` 中未使用的变量 / 导入 / catch 绑定与一个未用的页面内 `click` 辅助函数删除（保留原有请求副作用）、空 catch 补注释、页面注入全局以 `/* global */` 声明；测试中 `/^  x/` 改为 `/^ {2}x/`。有意的控制字符正则与 `{@html}` 页脚逐行 `eslint-disable` 并注明原因。新增 `.editorconfig`（UTF-8、LF、2 空格、末尾换行；Markdown 不裁行尾空格；只描述现有风格，不重排文件，不引入 Prettier）。CONTRIBUTING 第 4 节同步。
+
+- **错误码约定成文**（代码审查三轮第 5 项）：审计 `worker/` 全部路由与中间件的失败响应，以及前端 `src/lib/api.ts` `request()` 与浏览器扩展的判错方式。结论：项目约定是业务错误走 HTTP 200 + 包络 `code`（`badRequest` → 200 / `1002` 属有意为之，前端与扩展均按 `code !== 0` 判错），真实 HTTP 状态只用于鉴权 401、跨域 403 与少数需要 HTTP 语义的端点（点击计数 400/404/500、错误上报 400/413/429、Iconify 搜索 400/502、图标可信副本 400/403/404/409/503），其中 `objectIconLoader` 依赖图标副本的真实状态、扩展依赖 401，均不能改；审计未发现与约定相悖的路由，**无行为变更**。API_CONTRACT 新增「错误码与 HTTP 状态约定」节（helper / 位置 → HTTP 状态 → code → 何时使用），并修正鉴权小节中 not found 旧码的笔误（`1004` → `1003`）；`badRequest` / `serverError` / `ErrCode` 注释同步。新增 `tests/unit/errorConvention.test.ts`（9 项：`badRequest` / `serverError` / `authRequired` / 全局 `onError` 的状态与 code、`ErrCode` 数值快照、`worker/` 中全部显式非 200 `fail()` 响应的 20 条快照、前端 `ApiError` 对两种错误形态的 `status` / `code`）。
+
+- **`tests/` 纳入类型检查**（代码审查三轮第 4 项）：新增 `tsconfig.tests.json`（继承主配置的 `strict` / `noUnused*`，加载 `@types/node`；测试导入的 `scripts/lib/*.mjs` 只参与推断、`checkJs: false`）与 `npm run type-check:tests`，并串入 `npm run type-check`，CI 的 Type check 步骤随之覆盖。新增开发依赖 `@types/node@^24`（对齐 CI 的 Node 24）与 `@types/jsdom@^21`（对应 jsdom 26）。`tests/` 下全部 200 个 `.ts`（198 个测试文件 + 2 个 helper）纳入、无排除；在此配置下原有 120 个错误 / 37 个测试文件（另有 `src/lib/publicDataFocusRefresh.ts` 2 处在 Node 计时器类型下的 `clearTimeout(null)`，改为 `timer ?? undefined`，行为不变）全部按真实类型修复：测试替身补齐 `Settings` / `PublicCategory` / `PublicBookmark` / `BookmarkFormValue` 等新增必填字段，`vi.fn` 改用函数签名泛型 / `Mock<…>`，闭包内赋值的变量改用 `null as T | null` 避免被收窄为 `null`，JS 推断不出的探针返回形状以测试内局部类型标注；与 workers-types 的 `Element` 合并冲突改用 `appendChild` 与 `Element` 形参，少量测试替身经 `unknown` 定向转换并注明原因，未使用 `any` / `@ts-ignore`。测试行为不变。（2026-10-13 评估的 663 个错误 / 75 个文件含 `scripts/lib/*.mjs` 经 `checkJs` 报出的错误，`scripts/` 仍不在本项范围。）CONTRIBUTING 第 4 节同步。
+
+- **全新安装 `/install` 失败（v0.8.0 起）**（代码审查三轮第 3 项）：v0.8.0 在 `schema.sql` 中加入 6 个 `CREATE TRIGGER … BEGIN … END` 触发器，而安装器的 `splitSqlStatements` 只按分号切分，把每个触发器切成不完整的语句与孤立的 `END`，D1 batch 编译失败（`incomplete input`）整批回滚，全新 D1 库经引导安装器初始化必然失败（v0.8.0–v0.8.3 均受影响；已部署库与手动 `db:init` 不受影响）。现切分器识别 `CREATE [TEMP] TRIGGER` 的触发器体，与 `BEGIN` 配对的 `END`（含体内 `CASE … END`）之后的分号才结束语句，关键字不区分大小写、只认完整单词，字符串 / 引号标识符与 `--`、`/* */` 注释中的分号照旧忽略。新增 `tests/unit/installSchemaSplit.test.ts`（4 项：真实 `schema.sql` 切出 6 条完整触发器、大小写 / 字符串 / 注释 / 引号标识符 / `CASE … END` 边界、含 begin/end 的标识符不误判、真实 SQLite 上以完整 `schema.sql` 跑安装器且 6 个触发器存在并实际触发），`schemaVersioning` 的安装器用例改喂完整 `schema.sql` 并断言安装 batch 自带 6 条完整触发器；已反向对照（还原旧切分器后 5 项精确失败）。
+
+- **schema 迁移版本化**（代码审查三轮第 2 项）：原 `ensureSchema` / `migrateSchema` 在每个 isolate 冷启动的首个写请求上都要 `PRAGMA table_info` 两张表并执行一整批 `CREATE … IF NOT EXISTS`（索引、`click_rate_limits`、6 个触发器）。现改为 `worker/lib/db/schema.ts` 的有序幂等步骤 `SCHEMA_STEPS`（1：旧版缺列与排序索引；2：图标版本列、数据集代次与触发器；3：`click_rate_limits`），库内版本号记在 `settings` 内部键 `schema_version`。每个 isolate 每个 D1 绑定只运行一次（模块级 promise，并发首请求共用）：版本已最新时只读一行、不执行任何 DDL；否则按序执行缺失步骤，每步 DDL 与版本写入同一 D1 batch，失败整步回滚、版本不前进、不缓存失败，下个请求重试。版本写入为单调 upsert（只升不降，回滚部署的旧代码不会降级）；多 isolate 并发加列撞上「duplicate column / already exists」时重算该步重试一次。没有版本行的已部署库（含 v0.8.3）按版本 0 自动升级；未安装库（无 `settings` 表）跳过且不缓存；`/install` 建表后立即以修复模式跑一遍并记录最新版本（不在 `schema.sql` 写死版本，避免对残留旧表的库误记最新）。`withSchemaRetry` 缺列重试改为修复模式（忽略版本号、幂等重跑全部步骤）。各路由的 `ensureSchema` 调用保留（读路径仍按设计不预检，未被全局覆盖），首次之后为已完成的 promise。新增 `tests/unit/schemaVersioning.test.ts`（12 项，真实 SQLite：安装器全新安装 / `schema.sql` 全新库记最新版本且无 ALTER、v0.8.3 无版本行升级、更早结构逐步升级且保留数据、幂等重跑、版本最新时仅一条 SELECT 且同 isolate 零语句、同 isolate 并发共用一次、跨 isolate 并发迁移、不降级更高版本、第 2 步中途失败不升版本且整步回滚后可重试、未安装不缓存），更新 `categorySchemaMigration` 与 `install` 测试替身；API_CONTRACT / PROJECT_OVERVIEW 已同步。另发现既有问题：安装器 `splitSqlStatements` 按分号切分、不识别 `CREATE TRIGGER … BEGIN … END`，`schema.sql` 中 6 个触发器会被切成不完整语句（已由第 3 项修复）。
+
+- **install / recover 的 catch 留痕**（代码审查三轮第 1 项）：逐一复核 `worker/routes/install.ts`（13 处）与 `recover.ts`（8 处）的 catch。17 处非预期失败（D1 / KV 探测、读安装状态、限流读写、建 schema / 写凭据、改密写入、会话创建、失败后的状态复查与 claim 清理）改为 `console.error('[install|recover] <上下文>:', error)`，响应体与状态码不变；只记录原始错误对象，不记录密码、setup token 或请求正文。4 处预期分支保持不记日志并补注释：请求体非法 JSON（2 处），`recoverStaleInstallClaim` / `getInstallationState` 缺表即未安装、其余错误抛给路由 catch 记录（2 处）；`/recover` 缺表按 not installed 的原有注释保留。`install.test.ts` 新增 4 项、`recover.test.ts` 新增 3 项（spy `console.error` 断言日志与响应不变、日志不含密码 / token，预期分支不记日志），已反向对照（还原源码后 5 项日志断言精确失败）。
+- **路由 1500 错误留痕**（代码审查二轮第 7 项，全分支审计）：新增 `serverError(c, msg, error)`（`worker/lib/routeHelpers.ts`），`admin` / `auth` / `bookmarks` / `browserSync` / `categories` / `data` / `public` / `settings` 共 21 处 catch 改为先 `console.error('[api] <msg>:', error)` 再返回通用 `code=1500`，客户端报 1500 时 Workers 日志不再为空；响应体不含原始错误。顺带清理改造后未用的 `ErrCode` / `fail` import，并修正 API_CONTRACT 中 `/api/config` 缓存行为的描述。新增 `serverError.test.ts` 3 项（含真实路由 D1 失败断言日志）。`install` / `recover` 的 catch 维持原状（多为预期分支，需单独评估）。
+- **静默吞错逐处处理**（代码审查二轮第 6 项）：逐一复核 `src/` 与 `worker/` 的 `.catch(() => undefined)` 及同类静默 catch（共 18 处）。改为留痕或上报：① 排序保存失败后的回滚 `restoreOnError()` 再失败 → `console.warn`（保存错误仍是唯一上报给 `onError` 的错误）；② `refreshBookmarkIconCacheInBackground` 后台补图失败 → `console.warn`（含书签 id）；③ `objectIconLoader` 在 401/403/404 后删除本机副本失败 → 走 `device.reportStorageError`（与 put 失败同路径，`stale` 仍忽略），失去授权的副本删不掉不再无声；④ 存入后的统计刷新失败 → `console.warn`；⑤ Worker 边缘缓存写入 / 失效失败 → `console.warn('[edge-cache] …')`，有无 `ExecutionContext` 都记录（此前有 ctx 时交给运行时、无 ctx 时直接吞掉）。其余 13 处为有意忽略，逐处补注释说明原因：排序队列 / 清理队列只串行化（旧失败已由各自调用方处理）、IndexedDB 事务拒绝的观察与 abort 回声、打开失败的连接不缓存 / 关闭时无句柄（4 处）、内联正文校验失败改走网络、响应体 `cancel()` 失败（4 处）、错误上报读正文失败按空正文 400，`errorMonitor` 的上报传输失败原有注释保留。新增 `edgeCacheBestEffort`（2 项）、`appSortQueue` / `dataService` 各 1 项、`objectIconLoader` 2 项，已反向对照（还原源码后 6 项精确失败）。
+- **单元测试提速**（代码审查二轮第 5 项）：`vite.config.ts` 按文件首行的 `// @vitest-environment jsdom` 把测试拆成 `node` / `jsdom` 两个 Vitest project；jsdom 组件测试改走 `vmForks`（同一 worker 复用已加载的 jsdom，每个文件仍在全新 VM 上下文求值），纯逻辑测试留在 `forks`（`vmForks` 下 `node:sqlite` 等跨 realm 对象会让 `instanceof` 失真）；`maxWorkers` 至少 2（默认「核数 − 1」在双核 CI 上只有 1 个）。`iconAccessKeyLifecycle`、`searchBoxVisibility` 不依赖 DOM，去掉 jsdom docblock 改在 node 里跑。双核本机全量 `npm test` **140.5s（environment 58.6s）→ 44.4s / 59.0s 两轮（environment 3.7s / 7.0s）**，测试文件与用例数不变（194 / 2222，逐文件核对每个文件只跑一次：node 152、jsdom 42）；CI 仍只调 `npm test`，无需改动。CONTRIBUTING 第 4 节记录分组约定与 `vmForks` 注意事项；评估把 `tests/` / `scripts/` 纳入类型检查（独立 tsconfig 实测 663 个错误 / 75 个文件，且未依赖 `@types/node`），改动面过大，本项不纳入，理由与后续做法记入 CONTRIBUTING。
+- **首屏 JS 瘦身**（代码审查二轮第 4 项）：`npm run build` 实测首屏 `index-*.js` **312.88 kB（gzip 104.94 kB）→ 279.01 kB（gzip 94.73 kB）**，首屏 CSS **99.19 kB（gzip 16.67 kB）→ 82.14 kB（gzip 13.99 kB）**。① `Install` / `Recover` 视图改为按需加载（`createLazyComponentLoader`，加载期间沿用启动 splash，chunk 加载失败时 splash 显示「页面加载失败」并 `console.warn`，不再无限转圈）；② 书签右键 / 长按菜单 `BookmarkContextMenu`（连带 `CategoryTreeSelect`）改为首次打开时加载（`src/lib/lazyBookmarkContextMenu.ts`，所有卡片共用一个加载 promise；只有能打开菜单的卡片才在空闲时预取，加载失败时关闭菜单并告警）；③ 首页背景 / 卡片配色只需要预设的 9 个颜色字段，新增 `src/lib/themePresetRender.ts` 承载，完整 `themePresets.ts`（名称、描述、渐变，约 17 kB）仅随设置 chunk 加载，`tests/unit/themePresetRender.test.ts` 逐项比对两份数据防漂移。已知降级：从未在线加载过的菜单 / 安装 / 找回 chunk 离线时不可用（与后台视图相同；`/assets/*` 首次在线请求后由 Service Worker cache-first 缓存）。新增 `lazyBookmarkContextMenu`（3 项，含真实 BookmarkCard 打开菜单）、`themePresetRender`（2 项）、`firstScreenChunks`（2 项接线断言）；PERFORMANCE_CONTRACT 记录拆分约束与前后体积（文档此前未列 chunk 预算）。
+- **可信图标统计广播降为 O(1)**（代码审查二轮第 3 项）：每存入一个可信副本，`objectIconLoader` 都会 `refreshStats()`，它读一次 `storage.state()` 并把统计写进 `iconDevice` 主快照，而主快照的每次更新都会广播给所有图标视图（每张卡片一个 `createTrustedIconView` 订阅者），每个视图再用包含 `icon` / `icon_blob`（可达数百 KB 的 base64）的 `JSON.stringify` 重算签名：N 个图标即 O(N²) 次大字符串序列化与 N 次存储扫描。现统计改为独立 store `iconDevice.stats`（仅设备面板订阅，`statsSnapshot()` 读取），值不变不广播；`refreshStats()` 在 `ICON_STATS_REFRESH_DEBOUNCE_MS`（250ms）窗口内合并为一次存储读取，所有调用者等同一结果，`dispose` 时结清挂起的调用；视图签名不再序列化 `icon` / `icon_blob`，二者单独按值比较。新增 `iconDeviceState` 3 项（独立广播、突发合并、清理与释放）与 `trustedIconView` 1 项（大正文不进签名但变化仍重新评估，已反向对照），同步更新两处测试替身；PERFORMANCE_CONTRACT 已同步。
+- **图标显示状态与书签结构数据分离**（代码审查二轮第 2 项，P0 性能）：可信设备模式下每加载完一个图标，`dataService` 的描述符回写都会重建整个 `bookmarks` 数组（`adminStore` + `publicStore`），使首页 `homeData` 的排序 / 分组 / 搜索索引 memo 全部失效、所有分区重渲染，并触发 App 依赖整个 `publicData` 的全局样式块重写自定义 CSS；N 个图标即 N 次 O(N) 重建。现书签图标描述符只写入按 id 索引的独立表 `src/lib/iconDisplayStore.ts`（`bookmarkIconDisplay`，每个 id 一个稳定 store，更新只通知该 id 的订阅者），由 `BookmarkCard` / `SpotlightBookmarkIcon` / `CachedBookmarkIcon` 订阅并合并（`applyIconDisplayOverride`，与原补丁同一 write_epoch 栅栏与 `empty` 清空语义）；持久化后台快照时再把覆盖合并回行；结构数据替换时按数据集 / 删除 / 更新写入清理过期覆盖，登录身份变化时清空。App 的主题背景变量与自定义 CSS 拆成两条只依赖各自原始值的响应式写入，经 `src/lib/rootStyleWriter.ts` 按内容去重，点击计数、书签增删等无关变化不再重写 `<style id="custom-css-inject">`。分类图标数量少，仍走原数组补丁路径。新增 `iconDisplayStore`（5 项）、`rootStyleWriter`（3 项）测试，`dataService` 增 5 项（图标更新不改变 store 与 homeData memo 身份、仅通知对应 id、栅栏规则、快照合并、过期清理），`bookmarkIconRecovery` 增 2 项组件用例（卡片消费按 id 状态，已做反向对照）；PERFORMANCE_CONTRACT 已同步。
+- **其余出网请求补 SSRF 重定向防护**（代码审查二轮第 1 项）：ee657d7 只修了 `fetchIcon`，`fetch-site-meta` / `fetch-favicon` 的页面抓取（`fetchPageHtml`）、manifest 抓取（`fetchManifestJson`）、favicon 候选 HEAD/GET 探测（`fetchWithTimeout`）与 `POST /api/bookmarks/check-health` 仍 `redirect: 'follow'`，公网地址 302 到内网 / 元数据地址即可绕过入口检查。现把手动跟随逻辑抽成共享助手 `fetchFollowingSafeRedirects`（`worker/lib/pageMetadata.ts`：入口与每跳 `Location` 经 `parseTargetUrl` 过滤、最多 5 跳、303 下 GET/HEAD 保持、剥离内嵌凭据，被拒抛 `BlockedFetchTargetError`），`fetchIcon` 与上述调用方全部改用它；`fetchPageHtml` 的 `finalUrl` 改为助手跟踪的真实落点（手动跟随下 `response.url` 不可靠）。健康检查对内部地址不发请求，返回新状态值 `blocked`（API_CONTRACT 已同步），并在只取状态码后取消响应体释放连接。新增 `tests/unit/outboundRedirects.test.ts`（13 项）。
+- **后端小修**（代码审查第 5 项）：
+  - `fetchIcon`（图标代理 / 显式刷新 / 可信副本 / Iconify）补 SSRF 防护：入口复用 `parseTargetUrl`（`isBlockedFetchHostname`），重定向改为手动跟随、每跳重新过滤、最多 5 跳，并剥离 URL 内嵌凭据。
+  - 管理员凭据引导 `ensureAdminBootstrap` 的多次并发 `setSettingValue` 改为一条多行 upsert（新增 `setSettingValues`），各键同时生效。
+  - 改密码 / `/recover`：新密码与轮换后的 JWT 密钥同一条语句写入（`rotateJwtSecret(db, alsoWrite)`），写入失败两者都不变。
+  - `GET /api/bookmarks` 不再读取 `icon_blob` 正文（`icon_blob: null` + `icon_cached`，与聚合一致）；合并导入改用 `listBookmarksWithIconBlobs`，保证重建表时已缓存图标不丢。批量删除分块 `IN (...)` 已随第 1 项落地。
+  - 删除死代码：`PUBLIC_DATA_SETTINGS_WITHOUT_SITE_CONFIG_LIST_SQL`、无调用方的 `getDataVersion`、`tslib` 直接开发依赖（仅作为 `@emnapi/runtime` 的可选传递依赖保留在锁文件中；锁文件根版本号顺带同步为 0.8.3）。`getPublicDataSource` 的 `_siteConfig` 形参已随第 2 项删除。`click_count` 仍保留在公开数据中（REQ-17 依赖）。
+  - 新增 `tests/unit/backendHardening.test.ts`（9 项）及 bootstrap / recover 原子写入用例。
+- **路由鉴权按构造保证**（代码审查第 4 项）：`worker/index.ts` 原先每个受保护前缀都要手写「精确路径 + 通配路径」两行 `authRequired`，注释也承认漏一行接口就静默公开。现拆为公开子应用 `publicApi`（唯一公开清单，只允许直接返回的处理器与调用 `next()` 的透传中间件）与 `use('*', authRequired)` 的受保护子应用 `protectedApi`，后者在全部公开处理器之后挂载：新增接口默认受保护、漏注册方向变为 fail-closed。`auth.ts` 拆出 `authPublicRoutes` / `authProtectedRoutes`，`icon.ts` 拆出 `iconProtectedRoutes`（`/icon-access`、`/iconify-search`），`iconLocalCopy` 的 no-store 头中间件与 browser-sync CORS 在鉴权前执行（401 同样带头）；`authRequired` 改为请求内幂等，保留的逐路由守卫不再重复校验。未登录访问未知 `/api/*` 路径现返回 401 而非 not found。新增 `tests/unit/routeAuth.test.ts`（7 项：枚举全部受保护路由无 token / 伪造 token 均 401、公开路由快照、透传头），删除 `siteMetaRouteWiring` 中 3 条针对旧注册方式的源码文本断言。
+- **点击计数限流改用 D1**（代码审查第 3 项）：原实现每次点击 KV get + put，KV 免费额度每天 1000 次写入，用完即整体 fail-open。现限流与计数放进同一个 D1 batch（一次往返），新表 `click_rate_limits`（`schema.sql` 新增；旧库由 `migrateSchema` 幂等补建，缺表时 `withSchemaRetry` 自动迁移）：只为存在且公开的书签建计数行、计数在上限 +1 处饱和（超限点击 0 写入）、过期行按 `reset_at` 索引清理；语义保持每 IP + 书签 10 分钟 3 次、超限仍返回成功。限流 batch 失败时退回单条计数。点击接口不再依赖 `SESSION` 绑定。新增 `tests/unit/clickRateLimit.test.ts`（6 项）。
+- **公开数据 edge cache 按版本生效**（代码审查第 2 项）：前端匿名请求一律带 no-cache、服务端见 no-cache 就绕过 edge cache，Cache API 路径实际上是死的，任何人都能用请求头强制读 D1。现在匿名请求忽略 no-cache；前端在确认远端版本后请求 `/api/public/data?v=<data_version>`，服务端按 `v` 建键缓存，过期或伪造的 `v` 只花一条单行版本查询并以当前版本缓存副本（`no-store`）回应，绝不把内容写进不匹配的版本键；无版本旧客户端照常可用。删除从未被命中的后台 3 秒运行时聚合缓存（`worker/lib/runtimeCache.ts`）；`/api/public/data` 处理器拆成「带 token / 匿名」两条清晰路径，去掉 `getPublicDataSource` 无用的 `_siteConfig` 形参；`cache.ts` 的 `waitUntil` 在无 ExecutionContext 时不再抛错。新增 `tests/unit/publicDataEdgeCache.test.ts`（9 项）与 `dataService` 版本化请求用例，API_CONTRACT / PERFORMANCE_CONTRACT 已同步。
+- **写操作统一提交，data_version 与业务写入同事务**（代码审查第 1 项）：新增 `worker/lib/db/mutation.ts`（`Mutation` / `commitMutation`），分类、书签、排序、整理、批量移动/删除、设置、导入、浏览器同步的业务写入与 `data_version` 提升放进同一个 D1 batch，取代各路由约 15 处「写入后再单独 `touchDataVersion` + 两次失效」的重复代码；路由统一经 `worker/lib/mutationResponse.ts` 的 `mutationJson` 收尾（按收据失效缓存）。修复：两步之间失败会留下「数据已变、版本未变」；改图标时触发器与路由先后两次对外提升版本（现折叠为同事务内一次，响应版本即库中版本）；显式图标刷新（`POST /api/bookmarks/:id/icon-cache/refresh`）改变图标身份时漏提升版本；404 / 集合全部不存在时不再白白提升版本、打穿缓存。浏览器同步改为单 batch 写入（原逐条往返），开启同步时创建同步分类与设置写入同 batch。写响应包络新增附加字段 `data_version`（见 API_CONTRACT），`data` 形状不变。新增 `tests/unit/mutationCommit.test.ts`（13 项，真实 SQLite：同事务回滚、守卫不提升、触发器折叠、分块删除、显式/匿名图标刷新差异、设置回读、响应字段与失效），并更新受影响的 mock 测试。
+- **JWT 签名密钥跨 isolate 失效**（代码审查 P0）：`worker/lib/jwt.ts` 的密钥内存缓存原先永不过期，改密码 / 凭据重置 / `/recover` 触发的 `rotateJwtSecret` 只更新当前 isolate，其它 isolate 会一直接受旧 token、并对新 token 随机返回 401。现缓存 TTL 为 `JWT_SECRET_CACHE_TTL_MS`（15 秒，与 session 内存缓存对齐）；会话校验与图标访问授权在校验失败时经 `refreshJwtSecretAfterVerifyFailure` 按需重读一次 D1（同一 isolate 至少间隔 1 秒，防止伪造 token 放大 D1 读）。新增 4 项单测覆盖 TTL 过期、跨 isolate 轮换、失败重读与限频。
+
+## v0.8.3 — 2026-10-12
+
+- **后台高级颜色选择器**：`ColorAlphaInput` 改为紧凑输入框 + 棋盘格预览 + 浮动 HSV 面板，支持色相、饱和度/明度、透明度拖拽与键盘调节，点击外部或 Escape 关闭；保留原有 `value` / `alpha` 双绑定语义，并支持 `rgba(...)`、三位/六位/八位 Hex 手动输入与反向联动。
+
+## v0.8.2 — 2026-10-12
+
+> Issue #31 第 1、2 点（界面元素自定义 / 一级分类高频标签）。develop 实现、独立复核并部署测试站，真实浏览器 L2 验证通过；用 `refs #31` 不触发关闭（多点 OPEN issue，第 3 点已于 v0.8.1 处理），关闭留待部署验证后手动执行。配套需求/开发文档见 `docs/plans/ISSUE_31_*`。
+
+### 新增
+
+- **分类标题颜色自定义**（REQ-16）：设置「高级与视觉 → 分类标题字体与图标」新增「一级 / 二级分类标题颜色」两项，并入 `category_display`（随现有公开设置链路流转，复用 `ColorAlphaInput`、支持透明度）。非空时首页一级标题、二级 tab、全页搜索分组标题按层级着色，空值跟随主题（`--home-text-color`）；设置实时预览补二级样本以显示层级差异。服务端沿用现有颜色字段的字符串 + 长度校验（`CATEGORY_TITLE_COLOR_MAX=32`、trim、非字符串回退空串）。
+- **一级分类聚合二级高频书签**（REQ-17）：一级分类自身无直属书签、只有二级分类有书签时，「本分类」区展示其整个子树的「常用」书签（`getCategoryHotBookmarks`：`click_count` 优先、固定上限 `CATEGORY_HOT_LIMIT` 封顶（与全局 `most_visited_count` 解耦）、低点击按 `sort` 回填保证子树非空即非空），卡片标注来源二级分类名。修复此前空一级在「排序第一个子分类恰为空」时整块显示空态、忽略其它子分类书签的问题。隐私口径：剔除私密书签（`is_private`），与公开「经常访问」一致；**不再按匿名公开可见集（`publicCategoryIds`）过滤**——入参 `allCategoryBookmarks` 已按当前视图过滤（匿名由后端剔除私密分类及整棵子树，管理员为全量），再套用匿名可见集会把管理员正在查看的**私密一级分类**旗下公开子分类书签整体丢弃，导致空私密一级聚合区为空（Issue #31 复核修复，推翻 OQ-17.6 原裁定）。其它设备刷新后生效，不轮询、不改缓存与 `data_version`。
+
+### 修复与调整
+
+- **点击计数即时持久化（Issue #31 第 1 点后续）**：点击书签后把乐观 `click_count + 1` 写回「当前版本」的本地快照（登录态写后台快照、匿名写公开快照），不再只存内存。此前点击刻意不提升 `data_version`，刷新 / 焦点恢复会用旧快照覆盖内存值、同版本门控又不重拉，表现为「刷新多次都不更新，直到进后台『访问分析』强制重拉才生效」；现本设备刷新即保持最新计数。点击仍不提升 `data_version`、不改缓存语义。点击登记收敛到 `dataService.recordBookmarkClick`（`BookmarkCard` / `SearchSpotlight` 共用）。
+- **分类聚合数量与全局解耦（Issue #31 第 2 点后续）**：首页一级分类「常用」聚合区的显示条数改用固定常量 `CATEGORY_HOT_LIMIT`（`src/lib/homeData.ts`，当前 12），不再继承全局「经常访问」`most_visited_count`。因此全局数量设为 0 时分类聚合区照常显示；回填逻辑不变（热门不足时按 `sort` 补足）。如需管理员可调可后续升级为独立设置。该上限使「空一级 + 有子分类」各多渲染至多 4 张卡片/图标，`perf:audit` 图标请求预算（`PERF_MAX_ICON_REQUESTS`）相应由 260 上调到 270（实测全流程 ~262）。
+
+## v0.8.1 — 2026-10-11
+
+> Issue #31 第3点（150+ 书签首页滚动卡顿 / 图标请求性能）。develop 提交 `7958b68`、`3be922c`、`adf9953`、`5db771b`，已部署测试站并完成生产只读验证。Issue #31 为多点 OPEN issue（第 1、2 点 UI 自定义 / 二级分类高频标签不在本轮范围），用 `refs #31` 不触发关闭，关闭留待部署验证后手动执行。
+
+### 新增
+
+- 普通对象图标**有界并发调度器**（`src/lib/ordinaryIconScheduler.ts`，`7958b68`）：同源 `/api/icon/` 普通对象代理 fetch 改经一个有界、可释放的内存调度器，生产默认并发 **4**；按完整 URL 合并在途请求、可见优先于预加载、引用计数释放（排队中取消 / 运行中中止）。保留公开完成图标短期复用、私密 `key` 隔离、10 秒传输期限（仅在真正取得槽位后起算）与各调用方独立 object URL；可信设备副本、外部直连 `<img>`、分类与 Iconify 路径不变。并发值 4 由本地受控实验裁定（home355 夹具、CDP 150ms/1.6Mbps、N∈{4,6,8,200}×3 轮）：N=4 冷首屏就绪中位最低（p50 1979ms，对比 6/8 的 2141/2813ms）、卡顿最低、0 破图 / 0 失败。
+- 本地图标性能验证工具与计划文档（`5db771b`）：只读探针（分阶段 CDP 时间线、首屏就绪 / 长任务 / 帧间隔、`X-Icon-Fallback` 响应头分类）、隔离本地 150/355/583 规模夹具、N=4/6/8/200 限速对照实验，以及 `docs/plans/ICON_REQUEST_PERFORMANCE_*.md` 决策记录。
+
+### 修复
+
+- **首页滚动卡顿 / 图标并发突发**（Issue #31 第3点）：修复前完整滚动时普通 `/api/icon` 同时在途达桌面 **212** / 窄屏 **111**，冷首屏就绪中位 3276 / 3654ms。有界调度落地后生产实测同时在途降到 **4 / 4**，桌面冷首屏就绪 p50 **3276→2506ms**、窄屏 **3654→3257ms**，滚动帧间隔峰值 **1020→750ms**；`npm run accept:prod` **40/40**，控制台 / 页面异常 / 失败请求 / 写入均为 0。
+- **C-5 性能门 `/api/icon` 超额**（`3be922c`）：曾观察到总数 264（>260）。经本地同夹具 N=4 vs N=200 字节级对照证明与有界调度无关，根因是先加载的首屏公开图标被 64 项短期复用上限挤出、跨阶段 remount（搜索清空 / 后台视图）时重取（数据漂移下的既有问题）。将 `MAX_TRANSIENT_OBJECT_ICONS` 由 **64 提到 512**（TTL 仍 30 秒，仅公开 URL `isPublicObjectIconUrl` 门控、私密 `key` URL 永不进入），覆盖整页公开图标集。修复后部署站 `npm run perf:audit` 连跑 2 次 **10/10 通过**，`/api/icon` 稳定 **255 ≤ 260**（阈值未放宽、未设 allow-failures），355 卡片、0 破图、管理数据约 49KB、Cache Storage 约 0.66MiB。
+
+### 决策与限制
+
+- 条件性失败冷却（计划 IP-P3）：**不实施**。真实只读探针（读 CDP 响应头 `X-Icon-Fallback` 脱敏布尔、按对象哈希聚合）在测试站桌面 / 窄屏各 3 轮全阶段测得 `fallback_200`=0、同对象短窗重复回退=0、头解析正控 6/6、可重试失败类别全 0；无实测冷却触发器，不留未接入代码。此为证据门控判断——探针只观测响应头、不读响应体，空 body 200 的绝对不存在未作实测证明。
+- 残余：生产 `/api/icon` 仍有约 9 条精确重复，主要来自后台书签表原生 `<img>`（走 Cache Storage、不经本调度 / 复用路径），仍在 255 ≤ 260 预算内；进一步降低列为可选后续项。本轮不改并发协议、缓存头、`key` 身份、可信设备链路或回退语义；冷启动主线程卡顿与各阶段瞬时峰值（cold_home 短时可达 8）未全部消除，仅 full_scroll 的 212 / 111 突发被 N=4 消除。
+
+## v0.8.0 — 2026-10-11
+
+> 用户向摘要见 [v0.8.0 发布说明](docs/V0.8.0_RELEASE_NOTES.md)。本节保留实现细节、验证证据和限制。
+
+### 2026-10-11 发布关键门复核（修复前快照）
+
+- 测试站当前 bundle 为 `assets/index-D3qg2Jno.js`。`npm run accept:prod` 在独立临时 Chrome 中 **40/40** 通过：首访/二访、Service Worker 预缓存、离线壳、匿名边界、只读导出、桌面/390px 弹窗、三档视口、登出撤销均通过；控制台错误、页面异常、非预期 HTTP/网络错误为 0，临时 target、浏览器和 profile 清理成功。
+- `npm run perf:audit` 连续两次得到相同门禁结果：9 项通过、图标请求 **265 次（门槛 260，失败）**；355 张首页卡片、0 破图、本站失败请求 0、管理数据约 49 KiB、Cache Storage 约 0.64 MiB。该结果不能记为性能门通过，也不能用放宽环境变量阈值替代原因处理。
+- 使用 Cloudflare API 将活动流量从 Worker 版本 390 切到 389，再恢复 390；两版入口均返回同一 `assets/index-D3qg2Jno.js`。切换与恢复均成功，但这是重复 bundle，不能作为 IC-A07 的跨构建升级、旧/新标签并存或回滚证据。恢复后活动版本为 390。
+- 进一步切到 2026-10-05 的不同 Worker 版本，入口为 `assets/index-0F5Y0F5E.js`；该版本的性能审计仍为 9/10，图标请求同样是 265。随后恢复 390。两套构建都复现同一超额，当前证据不足以把它归因为本轮最近修复，也不足以放宽 260 门槛。
+- 当时发布阻塞保持：需要真正不同 bundle 的两次授权部署，另需解释或修复 265 次图标请求后再重新跑性能门；该快照不代表后续闭环结果。
+
+### 2026-10-11 性能门与 IC-A07 技术阻塞闭环
+
+- 性能修复：对象图标的公开 URL 在同一页面的“经常访问”和分类卡片之间增加短 TTL、有界的内存复用；私密 `key` URL 不进入该缓存，普通持久副本路径和 Cache Storage 契约不变。审计器增加脱敏的路径/重复请求摘要，便于区分真实对象和重复取数。
+- 候选 bundle `assets/index-2Fm4qXqU.js` 部署后，`npm run perf:audit` **10/10** 通过：图标请求 **259 ≤ 260**、355 张卡片、0 破图、本站失败请求 0、Cache Storage 约 0.65 MiB、管理数据约 49 KiB。随后 `npm run accept:prod` **40/40** 通过；Cloudflare RUM 的 `/cdn-cgi/rum` 204 遥测不再被误判为业务写入，并保留在排除证据中。
+- IC-A07 同一 profile 实测：旧 bundle `index-D3qg2Jno.js` 暖机后为 259 条副本/1,586,252 bytes；候选 bundle `index-2Fm4qXqU.js` 在旧标签仍打开时完整滚动后仍为 259 条/1,586,252 bytes；关闭并清理后 entries/body 均为 0；切回旧 bundle 后实际旧入口恢复且存储仍为 0。两个标签、Chrome/profile 清理均通过，残余进程为 0。
+- 本轮已完成技术阻塞验证，但尚未关闭 Issue 或合并 `main`；Issue 闭环和归档合并仍需维护者授权。
+
+### PROB-13 自定义 JS 与 CSP 验收
+
+- 2026-10-10 在独立可见 Chrome 154 的测试站，通过后台文本框输入并保存带可见计数标记的 JS。未保存的隔离预览不执行；保存后首页通过 Blob 脚本执行一次，真实点击主题开关 6 次仍为一次，刷新后新文档也只执行一次，正常流程无 CSP 违规。既有实现通过，无产品代码修改。
+- 实际 HTML 响应为 `script-src 'self' blob:`，不包含脚本的 `unsafe-inline` / `unsafe-eval`。反向检查中，内联脚本与实际点击的内联事件均未执行，分别产生预期的 `script-src-elem` / `script-src-attr` 拦截；不能把这两条主动触发的安全日志算成产品异常，也不能以响应头文本替代执行结果。
+- 通过真实文件选择按钮加载合成备份：43 B 中文 JS、3338 B JS（显示 3.3 KB），均另带 23 B 页脚 HTML；在 1440×1000 / 820×1180 / 390×844 共 **6/6** 组合中显示准确体积、执行风险及分段换行，提示与按钮不溢出、可命中，截图已复核。空 JS 对照不显示多余警告；真实取消和 Escape 均未发送 `/api/import`，不执行覆盖导入。
+- 原设置逐项一致恢复，测试标记消失；测试会话被撤销，专用浏览器/profile 清理完成。全阶段 console error、页面异常、失败请求、非预期 HTTP 错误均为 0，另保留上述两条预期 CSP 安全错误。此项闭环不替代 PROB-13 的两次真实部署升级提示验收，也不代表 iOS/Safari 真机通过。
+
+### REQ-15 导航布局组合补验
+
+- 2026-10-10 测试站独立可见 Chrome 154：左侧悬浮、左侧常驻、顶部滚动、顶部分行 × 1440×1000 / 820×1180 / 390×844 × 浅色/深色共 **24/24** 组合通过，截图已复核；390px 为 Chrome 触摸模拟，不是真机。
+- 通过真实设置表单保存布局，鼠标、触摸滑动/点击和键盘验证展开、选择、Enter/方向键、Escape 焦点返回。另有 **8/8** 补充检查：两种顶部布局各在 1920 / 820 / 390px 验证末端子菜单边界、命中与选择，左侧常驻收缩/Enter 恢复及手机子分类选中。未发现需修改的产品行为。
+- 24 组展开采证窗口内分类图片解码、像素及 Blob 复用通过，副本响应均为 0；布局往返后原有 51 条分类/书签副本描述无变化，新浏览内容正常增加缓存。原设置完整恢复，未增删分类或书签；测试会话已撤销，专用浏览器/profile 清理完成、残余进程为 0。
+- 控制台与页面异常为 0。完整操作期间另有 **7 次同一既有书签的 `503 unavailable`、54 次书签副本 `ERR_ABORTED`**，均非分类请求，原始记录保留；本次不声称全站传输零错误，也不以布局通过证明这些书签请求的根因或恢复矩阵已闭环。跨构建、iOS/Safari、安全区、软键盘和实际读屏仍待对应验收。
+
+### REQ-15 默认协议正文传输调查
+
+- 2026-10-10 同一产品构建在独立 Chrome 中两轮默认协议 UI 组合各 **14/14（exit 0）**，副本请求实际使用 HTTP/3；非预期错误为 0，测试数据、会话和 profile 清理完成。补齐当前默认协议证据，不回写历史失败。
+- 固定四个历史失败对象及其内容版本，HTTP/3 与 HTTP/2 各 32 次诊断请求，覆盖串行/四并发和响应克隆开关；64 次均获得完整 JSON，同对象正文长度与哈希一致，最长约 1.50 秒。本轮未复现旧正文中断，不能据此认定传输根因已修复，也不能将接口对照当作 UI 验收。
+- 旧记录显示 HTTP 200 后只接收部分正文，随后触发既有约 10 秒客户端取消；尚无证据进一步区分链路、边缘传输或浏览器协议/解码层原因。回归报告新增浏览器版本及压缩/长度元数据，不改变产品超时、重试和协议偏好。
+
+### REQ-15 桌面键盘与缩放补验
+
+- 新增真实键盘进入设置、缓存开关/清理、故障提示与恢复、菜单焦点返回，以及浏览器 AX 名称/角色检查；既有产品行为通过，无需产品修复。
+- 通过临时 Chrome 外观页的原生控件选择实际 100%/125%/200% 页面缩放；devicePixelRatio 比例、可见性与命中区检查通过，截图已人工复核。测试站 HTTP/2 组合 **7/7（exit 0）**，异常与清理错误为 0；该轮未覆盖其他布局、读屏软件和真机。后续布局证据见 [REQ-15 导航布局组合补验](#req-15-导航布局组合补验)，不扩大本轮键盘与缩放的覆盖范围。
+
+### REQ-15 普通图像回退的超时与恢复
+
+- `ca97ba5` 新构建测试站 HTTP/2 组合 **11/11（exit 0）**：暖刷新、标签切换、编辑取消、公开/私密双重 ConnectionReset 与超时、成功副本保留、重新登录和退出通过；非预期错误为 0，五条合成记录、三个会话和专用浏览器/profile 清理完成。默认协议传输限制沿用快照验收记录。
+- 副本失败后的普通对象代理存在两条路径：共享 fetch 未限制响应正文等待，原生书签图片持续挂起时没有超时触发。为共享对象代理增加包含正文读取的 10 秒期限；书签图标复用原生可见性看门狗，卡片与 Spotlight 通过既有有界重试恢复。
+- 不新增持久缓存或增加重试次数；超时释放共享在途条目，迟到正文不能覆盖后续请求。公开/私密冷缺失双重失败与暖副本保留使用真实 UI 清理、浏览、标签切换和原生存储验收，部署后证据见 BACKLOG。
+
+### REQ-15 快照提交与新会话隔离
+
+- `10b9637` 构建在独立 Chrome 禁用 QUIC 的 HTTP/2 组合 **14/14（exit 0）**：六个快照断点、暖刷新、旧 401、初始化交错、重新登录与退出通过，非预期 HTTP/网络/控制台及清理错误为 0。默认协议多轮功能断言通过但受非 fixture 副本正文 10 秒超时影响，整轮仍保留失败；HTTP/2 通过不代表默认协议问题已消失。
+- 真实编辑后暂停管理员快照提交，再从另一标签退出并重新登录，复现旧写入收尾删除新会话快照；只看最终结果会被后续重建掩盖。旧作用域写入改为精确删除，排队清理和异步裁剪核验会话归属，旧投影回写同样受保护。
+- 书签保存跨越快照等待后，仅原会话继续数据刷新、图标刷新和成功提示，避免退出后的旧操作再发送鉴权请求或影响新页面。
+- 延迟处理登录变化的旧标签不再覆盖其他标签已取得的新图标授权记录；旧标签仍需通过正常的会话作用域、数据集、租期和持久化栅栏后才能使用该记录，不扩大离线权限。
+- 存储事件先于会话刷新抵达时，作用域不匹配只暂停当前标签读取，不能撤销其他会话的新授权记录；追加该事件顺序的独立回归。
+- 增加 localStorage 提交前/后、Cache Storage 调用前/完成后及真实冻结的浏览器场景；通过实际表单保存、第二标签退出/登录、原生存储与中途删除采证验收。快照存储名称、数据格式和容量不变；本轮部署后状态以 BACKLOG 为准。
+
+### REQ-15 浏览流程性能与容量审计
+
+- `eea3023` 构建推送后的默认协议组合 **6/6（exit 0）**：三项基础前置、真实 UI 卸载/迟到响应隔离、五对冷/暖与五轮页面往返、容量淘汰全部通过，指定场景无遗漏。非预期 HTTP/网络/控制台/图像采证错误为 0；35 条合成记录复查不存在，测试会话被拒绝，专用浏览器关闭、profile 删除且残余进程为 0。此前失败报告与独立补清记录保持原样。
+- 五轮暖访问均无图标副本正文请求，页面往返后原生正文/索引账目稳定，无孤儿或未引用图像句柄累积。30 张 384 KiB 合成图像逐一实际提交，超过 10 MiB 预算后保留 21 张、正文 8,257,536 字节；设置页计数、UI 清空正文/条目与恢复均通过。另有本地原生 Chrome 的 100/500/1000 规模及联合预算 **36/36** 检查，不能当作测试站真实数据规模。
+- 冷/暖仅针对图标副本，页面壳资源已经预热；流程耗时包含操作与就绪等待，不是 LCP。显式解码为 Promise 累计等待，可能重叠，不是 CPU 耗时；未宣称解码次数或成本下降。存储以 Blob 和序列化元数据计量，不代表浏览器 profile 的物理磁盘占用。跨构建、真实到期和真机边界仍见 BACKLOG。
+- 增加真实首页滚动、Spotlight、后台分类与返回首页的五轮副本冷/暖对照及五轮同文档生命周期审计；独立记录网络、显式解码、图像句柄和原生持久化账目，不调用产品 Loader/Store 代替操作。
+- 增加 30 张 384 KiB 合成图像的真实页面容量验收，观察实际事务提交、超出预算后的淘汰、设置页计数、清理归零及恢复；本轮大样本仅允许已登记 ID 清理。
+- 收尾曾在逐条删除后的全量回读中断，旧报告保留失败且已独立补清；大样本改用现有批量删除接口，仍核验归属和最终缺失。另补齐原生图像随真实 UI 卸载的证据及重定向计数，未新增产品缓存或轮询；最终组合中原生迟到响应正常完成且未复活旧视图，没有把这次执行描述为取消分支命中。
+
+### 修复分类保存后丢失图标身份
+
+- `d6b36ba` 新构建默认协议组合 **14/14（exit 0）**：分类保存响应实际返回正确版本/代次，保存确认后的请求不再回退旧代次；键盘、Touch 移动、筛选取消、父子隐私、暖刷新及书签/菜单回归均通过。非预期 HTTP/网络/控制台/图像采证错误为 0，测试数据、会话和浏览器/profile 完整清理。
+- 真实分类保存/立即重新加载的组合发现一次未知代次 0 的多余副本读取；创建和更新响应未返回图标元数据，首页本地投影又仅保留五个旧字段，导致已知图标身份与隐私标记被暂时丢弃。
+- 分类写入在原 SQL `RETURNING` 中返回现有版本、写入代次和缓存标记；本地投影保留 `PublicCategory` 的完整字段，仅去掉创建时间。不增加查询、缓存、重试或图像正文传输。
+- 真实 SQLite 的创建、编辑、改名、隐私、换父级、清空与已有缓存覆盖响应到前端投影；旧实现三项反例失败，只修服务端时前端仍失败。旧测试站 UI 保存也明确观察到响应缺字段；新构建部署后另验，不用本地通过替代真实操作。
+
+### REQ-15 分类编辑、移动与隐私的真实操作验收
+
+- 首次部署后组合保留失败：匿名公开分类仍在原生重试时过早执行像素判定，后续用例又继承了匿名状态。补齐既有原生重试的就绪前置及失败后的独立恢复；后台筛选造成的副本取消另按真实输入、前后 DOM 和会话采证，不能整体忽略取消。
+- 新增筛选取消的真实浏览器专项：只延迟临时浏览器中的一次现有分类读取，不修改该分类；真实筛选移除消费者后取消，恢复列表后实际 Blob 与持久副本重建。默认协议 4/4（exit 0），只单列证据完整的准确取消请求，其他异常和清理错误为 0。匿名隐私就绪专项同样通过，原失败记录保留。
+- 增加分类原始图标读取、键盘选择/取消、真实改图及新文档暖刷新；增加 390px Touch 移出/移回父分类，以及父/子隐私切换后管理端与访客页面的验证。
+- 审查修正验收器对鼠标展开焦点的错误假设，按现有方向键规则进入菜单，并补齐 Enter 的原生回车文本；失败时实际取消弹窗，各场景独立准备本轮合成数据。未改产品交互规则。
+- 默认协议专项已验证键盘与改图/刷新、触摸层级移动和隐私恢复，相关非预期错误及资源清理检查通过。早期焦点前置和残留弹窗导致的失败保留；推送后组合验收另记。
+
+### REQ-15 原生图标断点与会话交错验收
+
+- `a7800bb` 自动构建后的默认协议组合 **15/15（exit 0）**：冷/热刷新、六个新增原生/初始化交错、常规旧 401、跨标签退出、重新登录和退出全部通过。非预期 HTTP/网络/控制台/图像采证错误为 0，合成数据、测试会话与浏览器/profile 完整清理；不扩展为任意身份迁移、快照提交或系统崩溃矩阵完成。
+- 新增真实副本解码后的退出、重新登录、冻结退出，原生事务 body 写入后 abort，以及写请求仍 pending 时从另一标签实际退出。核验私密 DOM 的逐帧隔离、正文/索引回滚与新 UI 会话恢复，不调用产品 Loader/Store 制造结果。
+- 新增新登录聚合数据尚未返回时交付旧 401 的场景，放行新数据后验证真实分类与私密图像。测试站专项通过；早期重新登录未进入目标分类导致的可见性前置失败保留，未据此修改产品加载策略。
+- 审查补强探针异步比对后的单次暂停权、像素观察与产品 decoder 的区分、原生方法/Debugger 清理，以及图像核验的绝对期限；推送后完整组合另记。
+- pending 写入首轮功能断言通过，但因第二标签退出响应未在对应 CDP session 取证而保留一条未归类 401，整轮保持失败。补齐真实撤销响应后，默认协议专项 4/4（exit 0），非预期 HTTP/网络/控制台及清理错误为 0；只沿用同会话在途请求的既有归类规则，不整体豁免 401。
+
+### REQ-15 私密副本期限与连接中断恢复验收
+
+- `b54c4f3` 推送并自动构建后，默认协议组合 **13/13（exit 0）**：冷/热刷新、真实编辑图标与标题、公开/私密连接中断、两类超时、慢普通代理与顺序重试、重新登录和退出全部通过；非预期 HTTP/网络/控制台/图像采证错误为 0，五条合成记录不存在、三个测试会话均被拒绝，浏览器/profile 清理通过。范围不扩大到尚未执行的解码/事务中断、跨构建或真机。
+- 首次推送后组合为 11/12：私密副本已按期取消并在 13.81 秒正确回退，但正常 1.2 秒重试早于较慢的原生图片完成，旧验收器错误要求此时只能有一次请求。保留该失败；验收现只允许一个同身份、前次已结束的准确顺序重试暂扣至像素/冷库核验结束，再检查其真实成功与落盘，不改产品重试或 15 秒期限。
+- 新增慢普通代理的确定性专项，必须实际命中上述顺序重试；测试站默认协议 4 项通过，约 13.32 秒显示正确回退，异常与清理错误为 0。显式指定但不存在或未执行的用例也会使总结果失败，避免只跑基础前置而误报通过。
+- 新增独立私密超时场景，沿用真实登录、设备缓存 UI 清理、冷库缺失、普通代理像素与新副本哈希的完整流程；提前换源取消及公开场景证据不能冒充私密超时。
+- 新增公开/私密副本连接中断场景，故障不落盘，解除后通过真实标签切换触发既有恢复；网络错误仅在对应场景完整通过后按准确 requestId 单列。
+- 测试站默认协议两轮专项各 4 项通过：私密请求约 10.01 秒取消、10.73 秒显示正确回退，两类连接中断均正确恢复。非预期 HTTP/网络/控制台与清理错误为 0；未增加产品重试、轮询或缓存。推送后组合验证另记，不用专项结果替代全部失败断点。
+
+### 统一工程规则与历史任务记录的阅读边界
+
+- 本仓库 `develop` 推送后等待 Cloudflare 自动部署，独立实例的手动部署另行说明；发行 tag 不再被当作线上构建已更新的证据。
+- 撤销旧 Svelte 4、缺少组件测试环境及 Spotlight 共享防抖的过期前置，保留对应历史判断与后续裁定入口。
+- 早期图标验收表、前端需求草案和 Tier 0 以外验证范围明确回指 BACKLOG；不因历史缺口或通用脚本未覆盖而重复安排已完成事项。
+
+### REQ-15 扩展验收默认协议完整通过
+
+- **2026-10-09，`3c85248` 新构建默认协议完整 46/46（exit 0），无跳过。** 签名续期/失败、虚拟时钟租约边界与恢复、真实关闭重开、编辑、三档菜单、503/408/429/500/错图及持续挂起、旧响应/旧 401、冻结与跨标签退出、分类权限均在同一轮通过。
+- 非预期 HTTP、网络、控制台、图像采证错误为 0；五条合成记录删除并复查，12 个测试会话均被拒绝，专用浏览器/profile 清理通过。未禁用 QUIC，历史失败与补清理报告保持原样。
+- 本轮闭环上述自动化场景；跨构建/旧 SW/回滚、真实长时间停留、真机及未覆盖的解码/持久化中断组合仍在 BACKLOG，不按总通过数扩大验收范围。
+
+### REQ-15 普通图标回退跟随内容版本
+
+- `8b76203` 的新测试站构建七项专项通过：改图后直接故障，不依赖标题变化，503 与超时均显示新图并恢复正确副本，非预期 HTTP/网络/控制台及清理错误为 0。
+- 租约暂停时自行生成代理地址的分支也使用已有短版本函数；完整 SHA 字符串超过 Worker 的版本长度上限，旧实现会把不同内容归一到同一 edge key。书签/分类两个跨模块反例已验证修复，不改变正常已签名代理地址或旧格式数字版本。
+- 仅修改图标、不修改标题后，副本 503/超时回退曾返回旧图片：普通代理 URL 版本遗漏已有内容 revision，命中修改前的 edge 缓存。书签卡片、通用书签预览及远程分类图标的版本现包含 `icon_revision`，未知时使用 `icon_write_epoch`；已知相同内容不会因单独写代次变化换版本。同步重置书签图像失败状态键。
+- 不新增数据库查询、网络请求或缓存层；继续使用原有 `v`、私密授权与客户端 no-store 契约。四个纯函数反例在旧实现失败，测试站“改图后直接进入副本故障”也观察到旧像素，修复部署后另验。
+- 503 复用已验证的公开/私密联合故障流程，减少分轮恢复和改写 fixture；保留冷库、真实像素、故障拒收和自然恢复门。
+
+### REQ-15 完整串联中的验收前置与清理
+
+- 首次扩展后的完整轮次为 44/46，原报告保留。原生分类超时场景有意增加 SVG 注释，后面的分类字节检查现先恢复自身标准 fixture；持续挂起后实际原生图片已正确显示，验收器现分别核验原生 Image 与 Fetch/Blob，要求准确请求、当前源、同文档、完整正文、时限和独立像素，不放宽旧 Blob 判定或取消豁免。
+- 关联七项默认协议专项通过，原生回退约 10.52 秒显示，之后新副本及正确哈希落库；分类字节与权限检查通过，非预期错误及清理错误为 0。
+- 原完整轮次权威清理回读失败，后续独立恢复会话已确认本轮五条记录全部删除并撤销。原报告没有具体 HTTP 码，不能唯一归因；新增受控测试覆盖 `/me` 成功后读到 401 的撤销传播竞态，只允许一次重新认证并重新核验所有权，保留失败状态码/业务码，不循环登录或盲删。
+
+### REQ-15 副本失败恢复与冻结标签退出验收
+
+- 默认协议七项专项通过，覆盖公开/私密书签的 408、429、500 及可解码错图：独立像素保持正确，故障不写入冷 IndexedDB，解除故障后由既有重试/焦点恢复机制建立正确哈希副本；不新增产品重试或轮询。
+- 默认协议冻结标签专项四项通过：第二标签实际收到 Chrome freeze 事件，第一标签退出后恢复第二标签，认证与私密 DOM 均清除。两轮非预期 HTTP/网络/控制台错误为 0，合成记录、测试会话与浏览器/profile 清理通过。
+- 这些专项不替代默认完整串联、解码/事务中途退出或任意冻结写入矩阵；结果保留对应运行边界。
+
+### REQ-15 分类权限验收与传输协议对照
+
+- 补齐 13 个测试站分类权限/响应头检查：匿名与未知对象一致拒绝、签名不能代替会话、私密祖先撤回公开图像、合法签名预览、管理员副本及相同 URL 恢复公开。独立字节预期与 Chrome 像素分别验证；只操作本轮合成数据。
+- fixture 准备与回读移到宿主请求，避免页面内 fetch 卡住测试编排；与浏览器请求日志分开记录，保留真实 UI 请求和清理门。默认协议的四项场景通过，但另有两个非 fixture 的 HTTP/3 副本收到部分正文后超时，整轮保留失败。
+- 显式禁用 QUIC 的独立诊断轮实际使用 HTTP/2，四项场景及清理通过，非预期 HTTP/网络/控制台错误为 0。此结果只支持协议/传输环境相关性，未确定根因；不修改默认测试协议、用户 Chrome 或产品网络策略，不以诊断轮替代默认完整回归。
+
+### REQ-15 校正时钟后恢复可信图标副本
+
+- 离线租约到期或检测到时钟回拨时仍暂停副本。重新联网并接受属于当前会话的新认证回执后，同步重置内存中的时钟观察上限，避免旧的未来时间让设备永久停在校验状态；读取快照、迟到响应和错误会话不能重置这个边界，不清理有效图像正文。
+- 同文档与重开后的未来时间检查点反例在旧实现失败，修复后通过。测试站增加真实持久副本、离线租约过期、时钟回拨及联网恢复专项；只改变测试文档时钟，不缩短或伪造服务器回执，不替代真实 24 小时等待。新代码部署后结果另记。
+- `03e8319` 新构建中，离线过期与回拨两个场景均验证了禁止本地副本、回执不续期及联网后重新恢复有效租约/正确 Blob；该组合轮随后在分类 fixture 的页面通道超时，整轮失败原样保留，不能宣称完整回归通过。
+
+### REQ-15 签名续期保留仍有效的图标授权
+
+- 到期前两分钟是续签窗口，不再当成签名已过期。等待续签、续签失败或返回无效授权时保留仍有效的 key；实际到期或会话变化后仍停止使用旧 key。不增加定时轮询、逐图授权请求或持久化。
+- 五个边界反例在旧实现失败，修复后续期、过期及旧会话隔离测试通过。测试站旧构建真实切换标签进入续期窗口后，私密图标从带签名请求变为匿名兜底，独立像素检查失败；新增可重复的挂起、503 与自然恢复专项。新构建部署后结果另行记录，不以本地检查替代。
+- `5fce390` 测试站新构建的六项专项通过：578 帧无退化/句柄释放、故障期间零额外图标正文请求，随后真实续签成功；重新登录图像与退出通过，非预期 HTTP/网络/控制台错误为 0，合成数据、会话与浏览器清理完成。
+
+### REQ-15 回归清理与测试会话所有权
+
+- **2026-10-08，提交 `9af3713` 部署后完整 37/37（exit 0）通过**：在线/离线真实重开、快速退出导航、原生挂起、旧快照、编辑/三档菜单、503/副本超时、旧响应/旧 401/跨标签退出及 IDB 故障均通过。快速路径约 5.58 秒，原生受控挂起约 12.10 秒；非预期 HTTP/网络/控制台/图像采证错误为 0。五条合成记录全部一次删除并复查，11 个本轮会话均返回拒绝；浏览器/profile 清理通过，未补写旧失败报告。
+- 页面 CDP 分离加原生超时四项专项 exit 0：确认页面已不能执行脚本，服务端数据清理、两个捕获会话的失效确认以及浏览器清理仍成功。多账号同名构建需按完整 check-runs 和已核准账号/build 区分的规则同步到部署验收指南；不将别账号成功误作目标站部署。
+
+- 新构建完整 37 项功能与清理通过，11 个本轮会话均被拒绝，所有删除一次成功；但原生超时用例的准备阶段仍有一次未归类取消，整轮保持失败。证据显示仅 v 改变、同节点新图已加载，原因是修改 fixture 后未等新副本物化就退出；现在该受控用例先核验已落库正文及描述符版本，再进入匿名阶段，快速导航用例时序不变，不扩展任何取消豁免。
+
+- 上轮目标构建专项的八项功能通过，但清理依赖页面 Runtime.evaluate，超时后留下合成分类且无法确认原会话撤销。原报告保留失败；后续只补清理了对应标记的数据，未重置用户认证。
+- 服务端清理改由独立、有界、禁止重定向的宿主请求执行；精确 ID、标题和树所有权双重校验，写响应丢失先查权威缺失，再有界重试。会话仅在测试进程内存登记，即使数据清理失败也逐个退出并验证 401，不撤销用户其他会话。
+- 目标站五项专项通过；主动分离专用 CDP 页面后，确认无法执行页面脚本，仍删除全部本轮数据并验证三个测试/恢复会话均为 401。首次实测还发现管理员三秒运行时缓存造成重复删除尝试，清理现使用既有 no-cache 绕过契约，避免把旧快照当权威结果；后续复验另记。
+- 新增真实页面通道分离故障入口和独立所有权、级联边界、超时、丢失应答、延迟撤销测试。部署后完整回归另行记录，不能仅凭新清理模块或单测宣称所有验收闭环。
+
+### REQ-15 原生分类图片悬空的有界恢复
+
+- 后续串联仍出现多轮原生重试无响应；重试地址增加文档作用域，避免跨文档重复使用重试 URL，不改变 Worker 持久缓存键。浏览器/传输内部原因尚未证实；当时的新地址策略待部署复验，后续通过结果见本次完整验收记录。
+- 一次快速路径约 51.86 秒恢复正确图像，但原 30 秒验收限制与既有三次退避预算不符，现按 65.2 秒完整上限核验，旧报告保持失败。副本故障前增加原生冷缺失证明、回退 Blob 追踪提前至导航前；修正后的 503/超时专项通过，未用跳过注入代替验证。
+
+- 完整回归的 37 项功能断言通过后，仍因一次准备阶段的文档更换取消而保留非零退出。导航现在记录实际发起、主 frame 提交及新旧 loader，只单列区间内旧文档的原生只读图标取消，不忽略 HTTP/API 错误或未知取消。旧缺证据报告保持原结果。
+- 新增快速导航和原生超时两项均已在新构建通过；首次完整回归的旧 401 用例保留了新会话，但未先确认其图像已就绪。现在旧响应继续暂扣、文档不变，先建立新会话图像基线，再验证迟到错误；不追认旧失败，也不替代初始化中交错矩阵。
+- 首次新构建实测中，图片已恢复但受控用例混入 fixture 的版本切换；修正为先确认权威物化版本与当前可见节点、仅暂停准确 URL。专项在真实 200 响应被暂扣后约 12.61 秒通过产品重试恢复正确像素，未使用脚本改图或人工 error 事件。
+- 完成状态按请求源区分，旧 Blob/旧 currentSrc 不能提前结束新 URL 的加载等待；另外三个源切换反例覆盖 DOM 属性提交前后及旧事件隔离。
+- 快速退出立即导航的旧构建反例再次失败：原生图片没有 load/error，既有 on:error 重试无法触发；将同一图片转为已有 retry 请求后可恢复正确像素。另有真实 200 响应被暂扣的独立负对照，排除只是测试等待不足。
+- 可见且在线的原生分类图片增加 10 秒加载期限，超时走现有 retry 参数和有界退避，不改变 loading=lazy、不改协议或持久化。自动重试至多三次，再由限频 focus/online 恢复；成功保留恢复后的 URL。
+- 明确错误归属：可信视图的 active 标记不等于 Blob 来源；原生 fallback 即使处于该视图也由组件管理重试，已验证 Blob 的错误仍交给可信副本模块。离屏、隐藏、离线、换源和销毁均清理期限，预览和 Blob 不安装原生加载观察器。
+- 新增真实快速导航和原生图片挂起场景，以及严格的完整重试取消证据。旧原生反例和受控挂起均保留，部署后另做原生路径与完整回归，不把后台诊断恢复冒充产品实现。
+
+### REQ-15 真正关闭浏览器后的持久化恢复
+
+- 重开后的组合回归发现旧快照前置把“登录标记已清除”误当“匿名页面已就绪”。现先在原文档核验公开图像、快照及私密对象移除，再开始旧格式恢复；快速退出后立即导航的失败另留待办，未改写成通过。在线/离线重开、匿名旧快照和保存图标七项专项通过。
+- 编辑取消增加真实 PUT、前后持久化描述符/哈希、像素与会话/时序匹配；仅在完整替代证据成立后单列。旧报告缺证据的取消不追认，不能靠场景名称或 ERR_ABORTED 放行。
+- 新增在线/离线同 profile 关闭重开用例：先验证原生 IDB 正文和图像，再确认旧进程归零、保留目录、新建不同进程/标签；重开后不重新登录、不重填图标，核对原会话、可信偏好、私密对象、像素和持久化哈希，离线恢复联网后再验证。
+- 复用现有 CDP 边界，页面采证可重新安装而不重复注册主机监听。安全重启仅允许本轮自建资源；清理路径固定为启动时的绝对路径，纠正 PowerShell 路径转义及查询失败误当零的风险。旧 socket 消息不能混入新连接，旧 pending 命令被明确结束。
+- 测试站预推送专项五项（含必需前置）通过，在线有真实鉴权刷新、离线有真实断网失败，五个 fixture 均无正文重取；进程、数据和最终 profile 清理通过。部署后完整串联结果与这些专项分别记录；不把同构建重开当作跨构建升级，也不扩大为签名到期矩阵完成。
+
+### REQ-15 已恢复快照不再重新缩为首批书签
+
+- 推送后等待自动构建，在新入口和默认有头 Chrome 配置上执行完整 33 项，33/33 通过、无跳过；匿名旧快照、IDB 故障、十秒副本恢复、三档菜单、旧 401 与跨标签退出均通过。实际包含 HTTP/3 请求，没有禁用 QUIC、强制 eager 或注入暖刷新运行时补丁。非预期 HTTP/网络/控制台与采证错误为 0，合成数据、会话及浏览器/profile 清理通过。
+- 两条原生签名换源取消仍保留于原始请求日志；仅在完整新响应和对应图像成功、所有旧使用者已换源/离开后单列。旧的未完成替代请求报告重放仍拒绝，不通过豁免所有 ERR_ABORTED 消除失败。L0 为 163 文件 / 1691 测试，类型检查与构建通过。
+- 真实浏览器复核发现，完整快照已经显示后，初始化网络刷新仍调用渐进更新，先把书签缩到 60 条再补齐；这会撤除后部分类/图标并重建相同请求。三个旧实现反例均失败，缓存恢复到实际刷新调用链可观察到 150 → 60 的回退。
+- 数据编排层只对尚未加载的冷状态分批。已有内容直接应用完整权威响应，不保留被删除/撤权的数据，也不改变认证代次、缓存格式、图标许可、网络并发或浏览器协议。旧渐进计时批次仍由 store 的代次失效。
+- 默认协议的受控浏览器对照中，暖刷新直接替换完整列表、不经过首批截断，匿名旧快照及存储故障等 11 个场景均通过；该对照不作为新构建部署证据；部署后的原生路径结果见本节首项。签名 key 更换导致的两条取消在完整换源、节点交接和新图加载证据成立后单独分类，原记录仍保留；未完成替代请求的旧失败报告重放仍拒绝。
+
+### REQ-15 挂起副本请求的有界恢复
+
+- 推送后的新构建专项：持续挂起约 10.01 秒后取消，约 10.80 秒显示普通代理生成的新 Blob；故障未落库，解除拦截后由现有重试取得新副本并校验 IDB 协议哈希。四项含必需前置通过，非预期 HTTP/网络/控制台为 0，合成数据及浏览器清理通过；不代替完整串联。
+- 验收器曾错误要求普通回退必须是原生 Image 请求，现按实际 Fetch → Blob 链路核验创建时间、MIME、字节非空、像素及不同的新副本 Blob；保留错误假设导致的失败，不通过更换产品路径或单纯接受任意 Blob 掩盖。
+- 图标加载协调层为每次实际副本传输（含响应正文读取）设置 10 秒期限；排队等待不消耗期限，普通 API、许可租期、持久化格式和四并发上限不变。期限到达会中止传输并释放槽位，不再依赖浏览器最终报告连接失败。
+- 最后一个使用者释放或许可失效时立即结束等待；迟到的成功响应不能重新发布描述符或写入存储。超时复用既有 retryable 分支，在许可有效时保留最近成功图，不缓存错误，恢复后仍可按现有机制重试。
+- 新增队列占满、超时保旧及恢复、立即取消、排队起算、计时器清理、撤销后迟到响应回归。前三个反例在旧实现失败；现有真实浏览器流程增加可独立运行的持续挂起故障注入和严格按请求归属的取消证据。
+- 此项修复的是已证实的副本请求无界等待，不将其宣称为所有普通图片挂起或连接关闭的根因。签名租期、跨构建升级、关闭重开、其他失败断点及真机覆盖仍按原待办验收。
+
+### REQ-15 旧快照恢复的独立图像验收
+
+- 登录与匿名分别在专用 profile 中仅把本轮合成书签快照改成旧 empty 格式，保留服务端版本；真实完整加载后检查聚合请求、投影版本写回和逐对象像素。匿名只验公开对象，并断言私密对象不可见。
+- 测试站九项专项（登录/基线、空闲、关闭缓存右键、延迟启用、冷/热、两种旧快照）通过，非预期 HTTP/网络、浏览器日志和页面异常为 0，合成数据及浏览器/profile 已清理。探针另有九项单测，覆盖所有权、只读检查和存储回退。
+- 每例恢复默认视口，避免低高度菜单测试污染随后登录；图像等待有界并记录耗时，失败时在恢复登录前记录原页面与单独网络探针。完整串联曾出现匿名分类图片等待超时，不能用独立通过抹掉，保留在待办继续复核。
+- 新退出意图回归同时暂扣匿名完整数据或暖快照版本确认，排除认证请求；新测试站构建下该场景、旧 401 与跨标签退出通过。
+- 只验证同构建读取合成旧格式，不冒充关闭浏览器重开、不同构建升级、旧 SW 接管、签名到期矩阵或真机证据。
+
+### 保留退出期间新发起的登录意图
+
+- 完整浏览器回归发现退出后的公开数据刷新较慢时，较晚完成的退出流程会关闭用户刚打开并正在输入的登录弹窗。测试站旧构建通过暂扣真实公开响应稳定复现，不能靠延长测试等待掩盖。
+- App 持有认证视图意图代次；打开/关闭登录、提交登录、密码恢复等新操作会使旧退出视图提交失效，懒加载之后再次检查。服务端撤销告警仍显示；新会话已建立时不继续清空其管理视图或缓存。数据请求代次与认证协议不变。
+- 新增独立意图测试与真实浏览器延迟响应场景；隔离 Worker + 有头 Chrome 的新场景、旧 401、新会话及跨标签退出共 6 个场景（含必需前置）；未选用例明确记录未执行。退出并发请求的 401 须取得同会话、时序和服务端已撤销证明才单列，不能整体忽略认证错误；推送后测试站复验另记。
+- 测试自建 Chrome 禁用原生窗口遮挡暂停，不覆盖页面可见性、不强制图片 eager；真实标签切换仍验证。
+
+### PROB-13 后台测试页动画帧等待修复
+
+- 推送后复验遇到 CDP 超时。受控真实浏览器实验确认后台页的 `pageExportControl` 等待动画帧不返回（页面已 complete，但 visibility 为 hidden）；不通过加长网络超时或削弱断言掩盖。
+- 启动后激活本轮专用页面，导出控件测量前再次激活；使用即时滚动后的同步布局读数，移除不必要且可能永不返回的动画帧等待。完整验收主动切至一个自建空标签，再从后台恢复原测试页执行真实导出；该额外标签在正常与失败路径均按 ID 清理。
+- 测试站有头 Chrome 完整 40/40，主动切换目标后恢复、真实子集导出及弹窗负向对照均通过；弹窗无非预期网络/HTTP、控制台或页面异常，本轮浏览器/profile 清理通过。
+- 不修改产品或全站设置，不把这项实验扩展为所有偶发启动超时的根因；先前失败报告仍保留。
+
+### PROB-13 弹窗验收改为真实输入与严格失败门
+
+- 测试站基线已能找到旧选择器（30/30）；未把历史失配误报为当前产品缺陷。实际发现旧脚本能合成点击桌面隐藏的移动入口，缺失动作栏又会跳过；现按真实可见桌面/移动入口操作，等待懒加载，取消使用鼠标及从表单输入框开始的 Tab/Enter。
+- 测量表单直属动作栏的取消/保存按钮、两轴视口与卡片边界、换行及实际命中；缺失、空栏、隐藏、溢出和遮挡都失败。20 个弹窗独立测试覆盖决策与恢复，保留原有 2 个预缓存等待测试，五个测试站页面负向对照逐项拒绝后恢复；不写服务端书签或设置。
+- 首访离开已清理旧文档后再计数，等待实际页面就绪；异常中断也输出已执行检查与清理结果。定向模式明确列出未执行范围，默认保留完整流程；临时 profile 未删除则不能完整通过。
+- 测试站有头 Chrome 完整 39/39、0 跳过；弹窗阶段业务写入、非预期 HTTP/网络失败、Chrome Log、console 与页面异常均为 0，浏览器/profile 清理通过。较早输入前置错误、超时与失败轮次保留在本地证据，不抵销为通过。
+- 弹窗首次打开的焦点仍在触发按钮，报告明确保留该观察；本项不声称自动聚焦、焦点陷阱、手机软键盘或安全区完成。当时另有 S3 与两次真实部署升级的验收欠账；S3 后续证据见 [自定义 JS 与 CSP 验收](#prob-13-自定义-js-与-csp-验收)，当前剩余范围以 BACKLOG 的 PROB-13 为准。
+
+### 复核修复后的真实浏览器总体验收
+
+- 2026-10-06 测试站有头 Chrome：27 项执行且通过，`28-IDLE-CONTROL`、`28-RIGHT-CLICK-OFF` 两项未执行，未计入通过率。编辑数据、图标句柄稳定、冷/热、取消重申请、公开/私密 503 回退、会话交错、三档菜单、存储失败、时差及 CSP/主题色均有对应场景证据。
+- 非预期 HTTP/网络失败、浏览器 Log 和各场景脚本异常均为 0；不把主动故障注入、取消和协商混为一谈。1 次预期断网、3 次与成功重试匹配的描述符协商分别记录；无法归属的历史失败不据此追认为通过。早期 P07 断网/取消记录中的 42 次网络失败未留请求 URL，仍无法逐项归属。
+- 通过状态驱动的折叠操作菜单处理避免点不到登录/主题按钮；会话数据交错和重新登录图像恢复分开验证，保留失败时只读状态诊断。未执行远端 Issue 状态写入或 main 合并。
+- 最终本地 1328 单测、类型检查、构建通过，API 冒烟 109/109；证据记录提交为 `be7fcb3`。本轮合成数据、测试浏览器和 profile 清理通过；早期启动失败的本机临时目录仍有残留，详见本地交付说明，不能宣称所有历史资源均已清理。
+
+以下记录已交付到 develop 的修复及该轮验证范围，取代待办中的“未推送/待提交/尚未复测”旧补记；**不将部分场景升级为完整验收**。原始站点证据仅保存在本地，当前欠账统一见 [BACKLOG](docs/BACKLOG.md)。后文各日期小节保留形成时的验证快照，不能脱离本节的后续结果当作当前状态。
+
+| 范围 | 修复提交（develop） | 已取得的证据及限制 |
+| --- | --- | --- |
+| 人工反馈 1：续期时保留有效租约 | `01c100b` | 后续真实改图、标题保存及 600ms 偏差场景通过；不代表所有签名到期/续期组合通过 |
+| 人工反馈 2：焦点恢复不无条件失效 | `019852f` | `29-TAB-FOCUS`、`28-RIGHT-CLICK-ON` 通过；缓存关闭右键未在最终轮次执行 |
+| 人工反馈 3：启用延迟至完整加载 | `48db90e` | `28-ENABLE-DEFERRED`、冷加载、热加载通过；不再是仅脚本语法检查 |
+| 旧格式图标及误写 empty 快照 | `96fdcb3`、`a2c1476` | 前者已有测试站逐项冷/热/故障 5/5；后者已交付投影版本与旧快照联网恢复、本地 L0 与隔离图标回归 47/47，脚本已增加旧快照场景。不能据此宣称目标站旧快照专项或跨两个构建升级完成 |
+| F28-1 编辑源字段丢失 | `1b9ca51` | 公开/私密书签从快照恢复后只改标题，原图标保留 |
+| F28-2 相同内容句柄重建 | `312c760`、`ee519de` | 改图与只改标题均无非目标句柄撤销、显示退化或额外对象正文请求 |
+| F28-3 取消后索引复用 | `cea9193` | 冷/热、受控授权/副本交错及重新登录图像恢复通过 |
+| F28-4 普通代理编码格式 | `08e5592` | 公开/私密副本 503 后均恢复正确图像，原两项预期失败转为普通通过 |
+| F30-1 菜单空间/顶部遮挡/滚动 | `df096eb`、`93abadc` | 三档视口真实编辑、展开/选择、取消和服务端未写入通过；不替代真机键盘/安全区 |
+| CSP/主题色/自动注入 | `33eb783` | 严格脚本策略与 no-transform 生效，亮暗主题色正确，冲突日志消失 |
+| #29 会话保护复验 | 保留现有代次保护 | 旧管理员/匿名响应、旧 401、双标签退出及重新登录恢复通过；没有为复验另造产品补丁 |
+
+流程见 [真实浏览器回归](docs/guides/ISSUE_BROWSER_REGRESSION.md)，独立图像预期见 [图标验收](docs/guides/ICON_ACCEPTANCE.md)。`no-transform` 阻止自动注入统计是已验证的安全策略选择，不是未修复的控制台错误；如需统计，另行明确 CSP 与隐私边界。
+
+### 区分图标写入栅栏与内容身份（F28-2 跟进）
+
+- 最终串联浏览器回归发现，后台刷新推进写代次时，内容未变的标题编辑仍会重建少数句柄。写代次用于防止旧写入覆盖，不是已验证图像字节的身份。
+- 在对象、数据集、内容 revision 与授权 epoch 均未变化时保留既有已验证图像，不再因单独写代次变化重建；权限/数据集/内容/空态变化仍释放。
+- 新增该边界回归；真实有头 Chrome 连续更换图标、公开/私密标题编辑及标题保存稳定性检查均通过，数据与非目标句柄保留。
+
+### 修复主题色脚本与 HTML 安全策略冲突
+
+- 将被 CSP 拒绝的内联主题色同步移入构建模块，保留初始同步、主题变化监听和开发热更新清理，不开放 unsafe-inline。
+- 静态 HTML 入口与 Worker HTML 响应从同一策略生成安全头，HTML 继续再验证并设置 no-transform，阻止与严格 CSP 冲突的自动脚本注入；静态脚本和 Service Worker 的缓存规则不变。生成规则纳入离线外壳指纹。
+- 自动注入的第三方统计不再由代理加入页面；如需统计，应单独设计明确的 CSP 与隐私边界，不能为消除控制台错误直接放开脚本来源。
+- 本地 1326 单测、109/109 API 冒烟、有头 Chrome 亮暗主题色与严格策略断言通过；推送后测试站复验另记。
+
+### 补齐顶部导航下的菜单避让与滚动稳定性（F30-1 跟进）
+
+- 测试站复验发现顶部导航仍可能覆盖扩展后的菜单。Sidebar 通过现有测量链报告真实底边，Home 发布顶部排除区域，菜单同时避让顶部导航和底部排序栏。
+- 测量自然高度时保留内部列表滚动位置，内部滚动不再触发外层重测；紧凑列表长名称省略显示但保留完整可访问名称/提示，权限提醒仍保留换行。
+- 隔离有头 Chrome 使用与测试站相同的顶部导航，在三档视口完成真实编辑、展开、选择、取消和服务端未写入核验；后续再次复验线上，不以先前左侧导航结果代替。
+
+### 为低高度分类菜单保留可操作空间（复核 F30-1）
+
+- 移动分类列表在卡片两侧均不足时，允许覆盖锚点并使用可见视口的可用高度，继续避开底部排序栏；普通编辑菜单仍沿用原方向逻辑。响应 visualViewport 的尺寸与滚动变化，退出选择后恢复原定位。
+- 两条新几何回归在旧实现失败；有头 Chrome 在三档视口实际打开编辑、展开/选择子分类、取消草稿并核对服务端未写入，均通过。1000×300 不再只剩不足一行的列表。
+- 测试点击先判断命中，避免强制居中滚动使弹层移动；隔离实例启动失败改为通过 finally 清理，受控启动失败未留下新状态目录。
+
+### 统一普通图标代理的数据 URI 解码（复核 F28-4）
+
+- 普通代理复用已有有界图像解码器，支持 UTF-8 URL 编码及 base64 data URI；不再把合法的 charset 图标返回为 HTTP 200 兜底。保留调用方的缓存策略，拒绝畸形、非图像及不支持的字符集。
+- 两项已知预期失败转为普通通过回归，并补充 UTF-8 字节长度和失败输入。真实有头 Chrome 分别向公开、私密副本注入 503，再检查普通路径显示正确图像。
+- 诊断报告把有明确 CSS 归属的背景加载和已取消响应单列；取消不代表协议成功，操作级请求及句柄预算仍计入取消请求。
+
+### 修复已取消图标读取的索引复用（复核 F28-3 边界）
+
+- 最后一个消费者释放未完成读取时立即移除其索引；同一任务内重新申请将创建新操作，而不是复用已中止的 Promise。迟到的中止结果不得重新发布别名或描述符。
+- 保留多消费者共享读取和权限失效边界。新增同任务重申请、迟到旧结果、仍有消费者时不取消的回归；前两项在旧实现失败。
+- 新增真实浏览器时序用例：暂停私密图标副本和授权响应，先释放授权以触发 URL 变化，确认新的申请及真实图像恢复。普通冷/热加载、保存稳定性也单独验证，不把前一项已改善的冷加载重复计为新成果。
+
+### 保留内容未变的可信图标句柄（复核 F28-2）
+
+- 已验证并显示的图标按对象、数据集、内容版本、写代次及授权 epoch 保留；快照补齐原始字段或在线 key 更新不再重建同一图像。内容、权限、数据集、隐藏或空图标变化仍释放原句柄。
+- 浏览器采集扩展到已显示的其他书签/分类及屏外 Blob 句柄，区分新出现的编辑预览与重载已有图片。旧测试站在单图保存时释放大量无关句柄；本地修复后非目标句柄、逐帧显示与对象正文请求断言通过。
+- 启动期间尚有被取消的描述符协商请求，仍作为后续冷启动/生命周期问题保留，不把单项通过写成全站零异常。
+
+### 修复快照恢复后编辑标题清空图标（复核 F28-1）
+
+- 编辑前读取当前身份下的权威原始字段，不把省略图像正文的显示快照直接转成完整更新表单。书签与分类共用该读取边界，但不将完整响应重新发布到首页 store。
+- 读取失败、退出或编辑意图变化时不打开过期/缺字段的表单；保留明确的重试错误提示。补充会话竞态、失败不回退到有损快照、读取不污染显示状态的测试。
+- 新增真实有头 Chrome 用例：确认快照已经省略图标来源，刷新后打开编辑，只修改公开和私密书签的标题，逐字核对输入并检查保存后的原始图标字段。旧测试站基线失败，本地修复用例通过；推送后的复验独立记录。
+
+### 图标验收器与独立合成数据
+
+- 拆分只读显示对比与合成图像内容验收：显示对比检查完整实例多重集合，包含基线文字项，但不再宣称图像身份已验证。
+- 新增无副作用验收函数及 CDP 采集函数，拒绝缺失、重复、错误图像、解码或画布读取失败；隔离图标脚本使用不同书签/分类合成图，验证实际像素与两个书签展示位置，避免同数字 ID 串图被相同测试图片掩盖。
+- 增加测试站有头 Chrome 逐项流程：真实输入核验、独立合成记录、Network/Console/Log、逐帧显示、Object URL 调用栈、延迟响应和存储故障；原始站点证据保存在仓库外。
+- 留存普通图标代理不支持合法 URL 编码 data URI 的两个预期失败回归。测试站发现的图标数据丢失、重建、冷启动和低高度菜单问题尚未修复；用例与验收边界见 `docs/guides/ISSUE_BROWSER_REGRESSION.md`。
+- 合成图像与验收契约见 `docs/guides/ICON_ACCEPTANCE.md`。这是一项测试基础设施改动，不改变产品逻辑，也不代表 #28、#29、#30 已重新验收。
+
+### REQ-15 自动恢复旧版误写的空图标快照（2026-10-05）
+
+- 旧版可能把误判的 empty 描述符写入页面快照；仅修复新请求不能保证已有浏览器自动恢复。为本地快照增加图标投影版本，读取缺少版本且包含 empty 图标的旧快照时保留数据，但不使用旧数据版本跳过联网刷新。
+- 成功获取服务端元数据后写入当前投影版本；未受影响的快照不强制刷新，新版真实空图标不会导致反复全量请求。公开与会话隔离的后台快照使用相同纯判断，图标正文缓存、权限和云端数据结构不变。
+- 逐书签浏览器脚本新增旧快照污染与升级恢复场景，只改测试自有 profile，不需要用户手工清缓存。
+- 本地验证：152 文件 / 1240 测试、类型检查、构建、空白检查通过；隔离 Chrome 图标回归 47/47，热刷新零额外正文请求，测试 profile 与本地数据目录清理完成。
+
+### REQ-15 修复可信缓存误判旧书签图标为空（2026-10-05）
+
+- 聚合接口用 `icon_cached` 表示服务端已有图片，旧数据可能没有原图地址、正文和版本。可信描述符现识别该标志：无版本进入 unknown 按需获取，不再当作 empty 清空显示；首页、Spotlight 和后台列表/统计保持相同契约。
+- 副本暂时不可用时复用现有在线渲染；重试不反复清空已恢复的在线图标。本地租约检查或到期时，仅使用对应对象的同源在线接口，仍由服务端鉴权，绝不复用旧私密正文；明确拒绝/删除不回退到旧副本。启动复用已有短暂重试窗口，保持正常热缓存零额外正文请求。
+- 新增逐书签对比脚本 `scripts/icon-display-prod-regression.mjs`，在测试专用浏览器中比较关闭、冷/热缓存及副本接口故障，报告和截图只写系统临时目录；不修改站点书签或全站设置。此脚本取代“只要页面有图片”的弱断言。
+- 本地验证：152 文件 / 1236 测试、类型检查（0 错误 / 0 警告）、构建及空白检查通过；隔离 Chrome 图标回归 47/47，包含真实保存、热刷新零请求与完整资源清理。线上旧版逐项对比已复现回归；新版推送后验证单独记录。
+
+### REQ-15 设备缓存开启延迟至下次加载（2026-10-05）
+
+- 勾选设备缓存只保存启用偏好，不再立即切换图标路径或自动发起联网校验。新增文档级启用状态，由首次读取已保存偏好决定；当前页面及已打开的其他页面继续走原展示路径，返回首页、焦点恢复、手动校验均不提前激活，下次完整刷新或重新打开页面后才按需缓存。
+- 面板显示“已保存，将在下次刷新或重新打开页面时启用”。关闭仍立即停用并清理；关闭后再开启也等下次加载。保留清理失败提示，并支持保存偏好失败后的重试；持久化格式、认证与过期边界不变。
+- 本地 L0：152 文件 / 1218 测试、类型检查（0 错误 / 0 警告）、构建与空白检查通过。新增当前/新挂载图标展示、跨页面偏好同步、关闭与重开、校验不提前激活等回归；Chrome 脚本已更新并通过语法检查，但未启动本地服务或执行真实浏览器验证，未部署。
+
+### REQ-15 焦点恢复不再无条件失效全部图标（2026-10-05）
+
+- 修复 `iconDeviceState.resume` 在每次页面焦点恢复时无条件增加失效代次、释放全部图标的路径。继续校验本机授权与持久化缓存状态，但同一有效租约不再进入 checking，不再释放书签和分类图标。
+- 磁盘缓存被清理、代次变更、会话撤销或校验失败时仍使旧图标失效；重复 stale 失败不会保留旧授权。未把权限检查转移到右键菜单或展示组件。
+- 两条新增焦点回归在旧代码上失败，修复后通过；状态机与真实 loader 组合测试确认保留图标且不增加图片读取/请求。本地 L0：151 文件 / 1210 测试、类型检查（0 错误 / 0 警告）、构建与空白检查通过。尚未用真实浏览器复测右键与焦点事件顺序，不将该路径视为全部偶发原因。
+
+### REQ-15 保存刷新时保留有效图标租约（2026-10-05）
+
+- 修复一种全量图标失效路径：保存书签后重新获取数据，若新授权回执比本机时间略超前，已有有效租约不再立即进入 checking、释放所有书签及分类图标。保留原回执与租约，在新回执生效后一次性接替；不延长旧授权、不修改服务端时间、不持续轮询。
+- 冷启动、旧授权到期、数据集切换、退出及撤销仍遵循原安全边界。新增状态机与真实 loader 组合测试，确认续期不释放现有图标、不增加图标读取或网络调用。旧实现运行两条新增回归均失败，修复后通过。
+- 本地 L0：151 文件 / 1204 测试、类型检查（0 错误 / 0 警告）、构建与空白检查通过。尚未复测真实浏览器保存流程，不能据此断言人工报告的全部触发原因已消除；焦点恢复的全量失效和首次启用立即切换加载方式另行处理。
+
+### REQ-15 可信冷启动时钟偏差修复（2026-10-05）
+
+- 推送后真实浏览器验证发现，服务器回执时间略超前于客户端时钟时，旧过期保护会让设备停在 checking。现在对不超过 5 秒且没有本机回退的新回执超前做一次性等待重检，时间追上前继续禁止使用副本；大偏差/实际回退要求同步时钟后重新校验。
+- 不修改回执、不延长租期、不增加持续轮询。新增状态机测试，并以 600ms 偏差运行隔离 Chrome 图标回归 45/45；1198 单测、类型检查和构建通过。此项是线上复验发现的独立补充修复；`e927427` 推送后，真实站点专项 13/13 通过，可信冷启动、生成图标、LRU 热路径及离线重载恢复；新 profile 重复专项 13/13、最终常规站点验收 30/30。
+
+### REQ-15 图标 LRU 命中落盘修复（2026-10-05）
+
+- 将真实图标 loader 的本地命中接入 1 秒按需合并落盘，并在页面隐藏时尽力提交；空闲不轮询，失败不自循环。
+- 容量淘汰在同一 IndexedDB 事务内合入近期命中；失败保留待处理批次，新到达的命中不被旧批次确认删除，同代际恢复不清空 pending touches。租约失效、清理与跨连接旧时间保持安全边界。
+- 类型检查 0 错误/警告，151 文件/1193 单测、构建通过；原生 Chrome IndexedDB 回归 36/36，页面图标回归 46/46，包含真实页面自动更新书签/分类 last_used 的断言。`cf3b92d` 推送后的时钟阻塞另行修复后，站点已直接验证 last_used 自动增长、saved_at 不变、热重载零副本请求和空闲写入计数稳定。
+
+### REQ-15 可信图标 UTF-8 data URI 修复（2026-10-05）
+
+- 统一前后端受限图像 data URI 解码，接受项目 `logoSurfIcon` 生成的 `charset=utf-8` SVG，避免开启设备缓存后退成首字母并触发物化 503。Worker 图片嗅探、浏览器解码/哈希、体积上限和会话隔离保持不变；未知字符集/参数仍拒绝。
+- 新增真实生成函数、旧数据补 revision、会话鉴权物化及 loader 保存回归；隔离 Chrome fixture 覆盖同格式分类和书签图标的冷/热路径。类型检查 0 错误/警告，150 文件/1185 单测、构建、图标 UI 45/45 与兼容 UI 4/4 通过。
+- 提交 `a65944e` 推送后，测试站现有生成图标的可信 Blob、普通重载与离线重载通过；测试隔离 profile 清理旧 SW 外壳后复验，不代表升级接管流程已验证。LRU 接线另行修复。边界与验收依据见[审计修复计划](docs/plans/ICON_AUDIT_FIX_PLAN.md)。
+
+### REQ-15 分类生产冷/热路径修复（2026-10-05）
+
+- 修复可信租约仍在有效期内时被竞态切入 `expired` 的状态机问题：租约回调、同步判定和统一过期入口均会重新读取当前租约并拒绝陈旧过期决定。对应提交为 `b5d8725`、`2f5029a`、`57f6c96`，已推送 `develop`。
+- 新 bundle `index-B_vb1kMT.js` 部署到测试站后，`npm run regression:icons:prod` 通过：分类冷路径使用可信 Blob（`body=89989`，`copy200=4`），同 profile 热加载复用 IndexedDB（`copyRequests=0`）；控制台错误、页面异常和非预期 HTTP 均为 0。
+- 本次测试创建的 Chrome target、浏览器进程和临时 profile 均已清理。该证据覆盖桌面测试站分类入口；iOS/Safari 与真实设备仍按用户指示由用户自行测试。
+
+### REQ-15 后续验证续跑（2026-10-04）
+
+- 按本轮授权推送空提交触发第二次 Cloudflare 部署；部署计数达到两次，但提交未改变应用 bundle，不能据此证明 IC-A07 的新版本兼容更新路径。
+- 在生产隔离创建随机私密合成书签，调用成功 `POST /api/icon-local-copy` 并检查平台响应：200；`Cache-Control: private, no-store`、`CDN-Cache-Control: no-store`、`Cloudflare-CDN-Cache-Control: no-store`，另有 `X-Content-Type-Options: nosniff`。合成书签已删除，本次会话已登出。该部署仍是一期书签实现，不代表未部署的分类代码。
+- 本地验证：`npm run type-check`（0 errors / 0 warnings）、`npm test`（150 文件 / 1170 项）、`npm run build`、`npm run smoke`（109/109）通过。隔离 Chrome `regression:icons:local` 45/45 通过，覆盖首页根/子分类物化、书签/分类同 ID 隔离、Sidebar 顶栏及子菜单、Enter/Escape 焦点恢复、首页分类范围与常规分类区、同 profile 重载、搜索分组、Spotlight、后台分类列表与分类编辑预览，并覆盖书签首页、经常访问、搜索、后台与编辑。浏览器控制台错误、页面异常和非预期 HTTP 均为 0；预期的请求取消单列记录，Chrome/profile 已清理。
+- 分类后台列表按轻量 `icon_display` 挂载图标；首页、Sidebar、搜索分组和后台列表在本地真实 Chrome 中均能从同一可信分类副本显示，编辑快照中内嵌图片源缺失时仅在进入编辑流程时刷新已鉴权后台数据，避免打开编辑后空图标值覆盖原来源。Q02 本地 D1/Worker 测试与 smoke 证据通过；Q03 桌面入口和键盘路径已通过，移动交互与生产分类部署仍未覆盖。
+- 扩展原生 IndexedDB 回归至 28/28：新增 100 书签 + 30 分类联合预算、五轮混合读取/解码、无元数据全扫描和 object URL 峰值证据；`regression:icons:perf` 以同一夹具完成首页冷/热、Sidebar 子菜单、搜索分组、后台分类列表各 5 轮，冷首页每轮至少 30 个分类物化，所有热入口分类正文请求为 0；就绪时延与无异常请求证据已写入开发计划 §8.4。生产平台性能、移动浏览器和真机仍未覆盖。
+- IC-A01～A20 逐项证据及缺口已记录在开发计划 §9.2.1。按用户指示，iOS/Safari 和真机事项标记为用户自行测试；代理未执行这些场景。
+
+### 分类图标二期设计冻结（REQ-15 / IC-Q01）
+
+- 冻结分类图标继续使用既有 D1 与单一 IndexedDB：分类表新增成功正文、内容摘要和写入代次语义，复用全局数据集代次、类型化对象键及书签/分类联合预算，不因兼容迁移清空书签副本。
+- 列清分类 CRUD、删除、导入重建、浏览器同步建空分类等写入口；冻结分类根链可见性 fail closed、缓存字段导入白名单和 data URI 快照投影约束。普通分类代理保持 no-store，专用认证物化端点按对象类型显式分派。
+- 记录 Sidebar、分类范围/区域、搜索分组、后台列表、编辑预览的冷/热请求基线：按实际图片槽位计数，区分持续挂载命中与销毁后重挂载请求。未伪造分类专属耗时/请求数字；固定合成夹具上的分入口量化留给 Q04。
+- 验证：分类 D1/迁移、UI/URL、祖先权限、图标代理、导入与快照相关 13 个测试文件/133 项通过。Q01 仅冻结设计；Q02～Q04 尚未实现，P07 发布欠账保持开放。
+
+### 一期书签图标本地审计基线（REQ-15 / IC-P07）
+
+- 扩展原生 IndexedDB 回归：真实 Chrome 断网时由新存储实例读取已保存正文；100、500、1,000 条合成 SVG 各运行五轮 20 项首批样本和全量读盘/解码，并记录中位数、p95、最大值、IndexedDB 读取数、正文/索引占用、全量扫描和 object URL 峰值。
+- 本次 26/26 通过；无控制台错误、页面异常、失败请求或非预期 HTTP 状态，临时 Chrome target/profile 已清理。基准只代表单机存储/解码层，不代表真实页面首屏、Worker/D1 或生产平台性能。
+- 推送至测试站后完成一轮真实验收：`accept:prod` 30/30、`regression:chrome` 25/25（密码轮换明确跳过）、`perf:audit` 9/9；设备缓存面板在真实浏览器可见且默认关闭，匿名 `POST /api/icon-local-copy` 返回 401/1001 和 `private, no-store`。性能审计覆盖 355 张首页书签卡片，本站失败请求为 0。
+- `accept:prod` 的主动断网阶段记录了 42 个 `loadingFailed`；错误为断网/导航取消，属于该场景的预期网络事件，但脚本没有把请求 URL 写入报告，不能逐条归属资源。单独复测无 HTTP 错误；其它线上浏览器探针未观察到本站异常请求或异常 HTTP。测试截图与报告、临时浏览器 profile 已清理。
+- 复核 API 契约并更新性能/技术说明、生产验收边界、排障和脚本指南。两次真实部署、生产平台缓存头、其他浏览器及真机证据仍未验证；P07 整体发布出口未因此宣告完成。
+
+### 迁移与兼容回滚清理（REQ-15 / IC-P06）
+
+- 新版继续清理已知旧 `localStorage` / Cache Storage 命名空间，并在兼容回滚构建启动时关闭可信副本、清空新版 IndexedDB 正文与索引；不相关存储和仍由当前界面使用的 v2 外部图标缓存保持不变。普通构建会在旧标签再次写入后通过跨标签存储事件/焦点恢复再次清理。
+- 兼容构建恢复快照中已投影掉正文的图片时回到普通 `/api/icon` 路径；可信正文请求遇到协议 1、无图片正文的描述冲突时，最多用服务端返回的新描述重试一次。其它错误仍保持失败状态，不作为预期 HTTP 响应放行。
+- 验证：`npm run type-check` 0 errors / 0 warnings；`npm test` 149 文件 / 1167 条通过；`npm run build` 成功；隔离 IndexedDB + Chrome 存储回归 16/16；正常图标 UI 回归 34/34、兼容构建 UI 回归 4/4；隔离 API 冒烟 109/109；`git diff --check` 通过。浏览器控制台错误、页面异常、失败请求、非预期 HTTP 状态均为 0，临时 Worker、D1、Chrome target/profile 均已清理。
+- IC-P06 本地实现与验证完成，已按阶段单独本地提交；未推送或部署。P07 的本地规模审计已增加；逐项安全证据归档、测试站点/生产部署后验证和两次部署兼容仍未完成，不能据此宣称 REQ-15 一期发布交付完成。
+
+### 完整书签展示与编辑接入（REQ-15 / IC-P05）
+
+- 首页普通分类与「经常访问」、首页搜索、Spotlight、后台书签列表及编辑/显式刷新接入统一的可信图标视图和对象副本协调层；跨展示位置复用一个授权副本，首页/后台数据快照不重复保存图片正文，精简后保留图像类型标记并按可见性通过普通代理懒恢复；可信模式优先读取授权副本。
+- 修复移动端后台书签编辑弹窗被底部导航栏覆盖的问题；回归验证保存按钮的实际命中层、鼠标提交、更新请求、保存后刷新及元数据编辑保留既有图片正文。
+- 验证：类型检查、构建、148 文件/1157 单测通过；隔离 Worker + 真实 Chrome 覆盖 29/29，包括首次物化、同 profile 刷新零正文请求、普通分类/经常访问/搜索/Spotlight/后台/编辑路径。无控制台错误、页面异常、失败请求或非预期 HTTP 错误；测试 Worker、D1、Chrome target 与 profile 均已清理。
+- P05 已完成；P06 迁移/兼容回滚、P07 一期审计、测试站点与生产部署后验证仍未完成，不据此宣称 REQ-15 整体交付。
+
+### 设备选择与会话生命周期（REQ-15 / IC-P04）
+
+- 后台新增独立「设备缓存」区域，默认关闭；风险说明、占用、联网校验、清理及关闭操作不进入全站 Settings 或备份。通过页面回调复用既有数据刷新服务。
+- 认证回执、当前数据集、会话身份与离线租期共同决定使用权限；本地快照/图片命中不续租。退出先封禁，迟到回执不得恢复；跨标签使用统一 storage 通知，持久撤销栅栏阻止旧标签覆盖偏好后重开旧会话。
+- 保留聚合元信息经过前端转换后的身份；避免相同会话通知反复重置页面数据。退出请求迟到时不清除后来登录的新身份。配额错误不撤销其他有效副本。
+- 验证：146 文件/1146 单测、类型与构建、隔离 API 冒烟 109/109 通过；原生存储 16/16，隔离 Worker + 实际页面联调 8/8（包括 390px 布局、键盘、全站设置不变）。无非预期控制台/页面/网络错误，临时资源已清理。
+- 此提交接通设备与会话控制；各书签展示/编辑路径的本地优先仍由 IC-P05 完成，不据此宣称整体验收通过。
+
+### 可信图标事务存储基础（REQ-15 / IC-P03）
+
+- 将离线租期、会话匹配、异常时钟、类型隔离和联合容量决策分离为纯策略。选择需求允许的单一 IndexedDB 后端，正文/索引/计数/撤销栅栏在同一原生事务中更新，不增加 Cache Storage/localStorage 图片镜像。
+- 加入迟到激活防护、退出清理与写入串行、损坏条目修复和有界 LRU。消除每条索引重复的完整作用域，保留 512 KiB 原预算；常规命中不扫描全量元数据或图片。
+- 验证：类型检查、144 文件/1132 单测、构建通过；隔离 Chrome 的原生 IndexedDB 验证 15/15，包括写正文后索引失败回滚、两标签清理与迟到写防护、1,000 条联合容量。无非预期控制台/页面/网络错误，测试浏览器与 profile 已清理。
+- 本提交是后续设备状态与页面接入的基础，尚未用于生产图标展示；不能据此宣称二访零下载或完整 UI 回归通过。
+
+### 可信图标副本服务端契约（REQ-15 / IC-P02）
+
+- 为书签成功图片增加独立内容摘要、条件写入代次和数据集身份；显式刷新、代理惰性补图与导入均接入。旧 SQL 改正文时摘要失效，换源时清除旧正文；并发旧请求不能覆盖新保存。
+- 新增会话鉴权的单对象数据物化协议，限制输入/图片体积，禁止共享和浏览器自动缓存；普通对象代理的权限顺序与 no-store 不变。
+- 公开模式的带 Bearer 版本请求也验证会话；认证回执与普通图标 key 分离。聚合元数据和内容同批读取，导入重建 ID 时原子更换数据集并返回新身份。
+- 验证：类型检查、143 文件/1123 项测试、构建、隔离 Wrangler/D1 冒烟 109/109 通过；临时数据库已清理。真实 SQLite 测试覆盖同内容版本、来源 ABA、并发刷新、旧写入保护与迁移/导入回滚。
+- 此项仅交付服务端边界，不代表可信设备开关、浏览器持久副本或分类阶段已完成；当前尚未进行生产部署验证。
+
+## v0.7.3 — 2026-10-03
+
+### #28 / PROB-39 部署后复验与验收就绪检查
+
+- 代码基线 `2a22a2dc0d94758e1a7a9a55ec5ef1116c6163fc`：`8709ace` 补齐未缓存 HTTP 图标恢复，`2a22a2d` 修复固定排序工具条遮挡；两项代码提交的 CI 均通过。测试站点上已观察到相应恢复行为和工具条留白，不以本地构建哈希推断部署状态。
+- 测试站点只读回归：标准验收 30/30，图标故障注入与三档视口末排卡片/菜单/键盘专项 22/22，性能审计 10/10。355 张卡片、0 破图、图标请求 259 次（预算 260）、后台传输 37,381 B、Cache Storage 630,185 B。只有专项主动注入的一次连接重置，无非预期失败请求或页面/控制台异常。
+- 修正验收脚本：弹窗不再依赖固定 320/360ms 等待，也不把任意 `.modal-card` 当成书签弹窗；预缓存检查等待真实入口 JS/CSS 条目，最多 10 秒，超时仍失败。补充慢加载、错误弹窗、延迟缓存和超时的四项测试；全量 140 文件/1095 项单测、类型检查、构建及脚本语法检查通过。
+- 预缓存异常另经独立 Cache API 对照定位为本机 Chrome 长临时配置路径问题：较长路径出现存储内部错误，恢复系统临时目录作为 profile 根目录后同站点验收通过；排查办法记入部署后验收指南，不放宽缓存断言或存储预算。
+- 测试未保存站点书签/排序/设置或轮换密码，仅撤销本次创建的会话；测试浏览器和临时资源已清理。Chrome 134、报告者原实例及 iOS 虚拟键盘/安全区真机仍未验证，Issue 状态未修改。
+
+### 修复固定排序工具条遮挡末排卡片（PROB-39）
+
+- 测试站点复现窄屏末排卡片中心命中固定排序工具条：工具条脱离文档流，页面滚动范围与右键菜单都未扣除其覆盖区域。
+- Home 持有工具条遮挡高度，通过独立尺寸观察 action 在挂载、换行及视口变化时更新；底部留白叠加用户已有边距，卡片滚动停靠与菜单定位使用同一 CSS 变量避让。退出排序/关闭错误栏时清零，卸载时移除监听；不改变排序草稿和保存接口。
+- 回归：四条新增组件用例修复前失败；补齐几何边界后全量 139 文件/1091 项单测、类型检查与构建通过。隔离 Chrome 在 1366×768、390×844、1000×300 对末排卡片、移动按钮、分类下拉和键盘操作验证 19/19，无非预期网络/页面/控制台错误；取消排序未产生数据写入，资源清理完成。
+- 测试站点复验结果见本轮部署后复验条目；iOS 虚拟键盘与安全区真机验证仍需人工。
+
+### 补齐未缓存 HTTP 图标的失败恢复（Issue #28）
+
+- 复核 Issue 回复后确认，既有修复只覆盖已走对象代理的图标。未有数据库图标缓存的 HTTP 图标直接作为图片加载，失败后不会进入代理重试；后续聚合数据的 `icon_cached` 变化也不在原状态键中，可能继续保留失败状态。
+- 保持直连成功时零额外请求，仅在有效书签的直连图片失败后复用现有有界代理恢复；公开与私密授权边界、在途请求合并、独立 Blob 生命周期和 no-store 保持不变。将缓存可用性纳入状态键；不为无效预览 ID、文字图标或 Iconify 图标引入对象代理恢复。
+- 真实隔离 Chrome/Worker 对照：外链首次失败后，修复前公开/私密卡片均持续兜底且无代理请求，只有打开编辑并取消才恢复；修复后无需编辑，三处卡片经两次请求恢复真实 PNG（公开重复卡片共享一次），公开 no-store、私密 private/no-store，均无兜底标记。
+- 验证：新增六条针对遗漏路径的用例在修复前全部失败，补齐边界后全量 138 文件/1082 项单测、类型检查、构建、API 冒烟 97/97 与 diff 检查通过。仅有两次故障注入产生的预期连接重置，测试资源已清理。
+- 现有测试站点连续三轮清站点数据/硬刷新未自然复现持续兜底；受控复现证明的是上述遗漏路径，不能据此断言报告者所有失败都来自同一原因。Chrome 134 与报告者实例未验证；测试站点复验结果见本轮部署后复验条目，Issue 状态不由代码提交改变。
+
+### 2026-10-02 测试站点回归
+
+- 代码基线为 `fc35fb25c43a77bedbdcfdbbcb8444376bfd1c03`：四项修复已分别提交到 `develop`，对应 CI 通过。提交前再次完成类型检查、138 文件/1065 项单测、构建与隔离 API 冒烟 97/97。
+- 使用本地验证配置指定的测试站点执行只读回归：标准验收 30/30、性能审计 10/10；确认站点已提供导航响应修复，图标恢复、跨登录切换的延迟响应/旧 401、普通重载均按预期运行。
+- 1366×768、390×844、1000×300 的普通底部编辑菜单均可命中；在未被固定工具条遮挡的卡片上，嵌套分类列表、键盘导航和内层 Escape 通过。
+- 另发现固定排序工具条遮挡末排卡片/菜单的边界（PROB-39）：390px 窄屏末排卡片中心命中工具条，300px 低高度中末排菜单操作也可能被工具条覆盖。该失败保留在结果中，不能以标准验收脚本通过代替全部交互闭环；修复计划在 `docs/BACKLOG.md`，本轮未追加代码修复。
+- 测试未保存排序、修改书签/设置或轮换密码，只撤销本次创建的登录会话。原始报告、截图和临时配置均留在仓库外；测试仅使用独立浏览器配置，不触及日常浏览器。真实 Mac/Safari、虚拟键盘与连续两次部署的新版本提示未验证，Issue 状态未修改。
+
+### 修复跨会话刷新与管理员快照竞态（Issue #29 复核 / PROB-37）
+
+- 数据编排层在会话变化时立即清除旧身份视图，以会话/刷新代次拦截延迟快照、版本、聚合响应和旧 401；渐进渲染批次在数据替换或清空后失效。
+- 管理员快照读写清理串行执行，并校验会话归属，防止在途写入越过退出清理后重新落盘；API 层不再允许旧请求的 401 清除新令牌，自动数据刷新由编排层决定何时退出。
+- 回归：新增延迟响应、旧错误、版本/快照恢复、渐进渲染及 Cache Storage 在途读写测试。类型检查、135 文件/1040 项单测和构建通过；隔离 Chrome 验证退出后旧管理员响应、登录后旧游客响应、重新登录后旧 401 均不覆盖当前状态，控制台/页面/网络错误为零。测试站点复验与剩余边界见本轮统一记录。
+
+### 修复书签临时兜底图标无法自行恢复（Issue #28 复核）
+
+- 图标获取结果保留可重试失败/兜底状态，首页卡片与 Spotlight 不再把可解码的兜底 SVG 当成真实图标成功。保留按完整 URL 合并在途请求和各组件独立 Blob 生命周期，不持久化对象图标或失败响应。
+- 每个图标身份最多自动退避重试三次；隐藏/离线时暂停，耗尽后仅在重新可见或联网事件做 30 秒限频探测。成功解码、身份变化和卸载都会清理旧计时器/监听器；解码失败也受重试预算约束。
+- 回归覆盖公开/私密授权、首页/Spotlight、网络和解码失败、换 key、卸载及缓存隔离。隔离 Chrome 注入一次兜底后，两处重复卡片仅追加一次共享请求即恢复真实图片，无需打开编辑弹窗。测试站点复验与剩余边界见本轮统一记录。
+
+### 修复右键菜单内分类下拉的视口裁切（Issue #30 复核）
+
+- 右键菜单使用分类选择器的内嵌布局模式，子树展开/折叠主动通知外层重新测量；其他表单中的选择器保留原有浮层行为。自然高度测量不受上一次限高影响，也不通过 Svelte 绑定变量写临时样式，避免反复触发更新。
+- 进入分类选择时暂时收起编辑/移动操作行，为低高度视口保留列表空间；取消后恢复操作行和键盘焦点。保留内层优先 Escape、外部点击和排序草稿取消行为。
+- 验证：137 文件/1060 项单测、类型检查和构建通过；隔离 Chrome 在 1366×768、390×844、1000×300 中均验证首次展开不越界并实际选中目标分类，低高度列表为 81px 而非 14px。测试站点复验与剩余边界见本轮统一记录。
+
+### 修复缓存 HTML 重定向响应导致的页面重载失败
+
+- 真实 Chrome 复核发现安装预缓存会跟随 `/index.html` 到 `/` 的重定向。直接把带 `redirected` 标记的缓存 Response 用于导航，会被 Chromium 的 `redirect: manual` 检查拒绝，并产生 Document `ERR_FAILED`。
+- 导航输出对这类响应创建保留正文、状态和响应头的新 Response；克隆正文供后台 shell 比较继续读取，静态资源与 API 缓存策略不变。覆盖根路径、管理路径、显式 index.html、首次导航和离线回退。
+- 验证：新增五条测试修复前全失败、修复后通过；最终 138 文件/1065 项单测、类型检查、构建与独立 API 冒烟 97/97 通过。隔离 Chrome 完整回归前三项修复、普通重载、断网重载和联网恢复；旧重定向错误消失，断网注入之外无失败请求。测试站点复验与剩余边界见本轮统一记录。
+
+### 修复匿名图标代理的隐私状态缓存泄露（PROB-38）
+
+- 根因：`/api/icon/:id` 与 `/api/category-icon/:id` 先命中不含身份的共享 edge cache，再读取 D1 判断当前对象是否对匿名访客可见；公开图标缓存后改为私密时，同一个 `v` 仍可能返回旧真实图标。分类图标还曾由 Service Worker cache-first 保存。
+- 修复：匿名请求先通过目标书签/分类及祖先链的递归 D1 可见性闸门，再允许命中/写入 edge cache；私密、未知、孤儿分类和循环分类返回 `no-store` 身份无关兜底，不读写共享缓存。合法授权 key 继续 `private, no-store`、不读写 edge cache。
+- 缓存迁移：公开图标改为浏览器 `max-age=0, must-revalidate`、edge `s-maxage` 保留；icon cache namespace 升到 3；Service Worker cache 版本升到 v17，并移除 `/api/category-icon/*` Cache Storage cache-first。旧 runtime cache 在新 SW 激活时删除。
+- 回归：补充公开→私密书签、公开→私密分类、分类祖先/循环/未知对象、旧 edge hit、旧 SW cache 清理、授权/匿名异常缓存策略和 Service Worker network-only 测试；本地独立 Worker/Chrome 验证匿名不再命中旧真实图标、公开 edge hit 仍有效、私密响应为 `private, no-store`。
+- 验证：`npm run type-check` 318 files 0/0、`npm test` 134 files/1002 tests、`npm run build`、`npm run smoke` 94/94、`node --check public/sw.js` 和 `git diff --check` 全部通过；真实隔离 Worker/D1/Chrome 覆盖公开→私密、祖先变化、父级缺失、授权 `private,no-store`、SW v17 激活/旧 v16 清理与无 API Cache Storage。推送 develop 后的正式 `perf:audit`/L3 仍列为发布后门禁。
+
+### 分离对象图标的 Edge 与浏览器缓存（PROB-38）
+
+- 生产验收发现共享域名的 Cloudflare Browser Cache TTL 会把公开图标响应的 `max-age=0` 改成 4 小时；公开图标改为私密后，普通浏览器仍可能从磁盘缓存返回旧真实图标。
+- 代码级修复仅作用于 `/api/icon/:id` 与 `/api/category-icon/:id`：公开真实图标和永久缺图兜底继续写入 Worker 的 Edge cache，但所有客户端响应（包括 edge hit）统一 `no-store`；授权、拒绝、未知、孤儿和循环对象保持 `private/no-store` 或 `no-store`。
+- 图标客户端 URL 版本由 `cv=3` 迁移到 `cv=4`，绕过已存在的旧浏览器条目；不修改共享域名的 Cloudflare Zone 配置，不增加初始部署步骤，也不改变 Iconify 和站点元信息缓存。
+- 验证：L0 类型检查 318 files 0/0、单测 134 files/1010 tests、build、diff-check、L1 smoke 97/97；隔离 Worker + 普通 Chrome 验证公开命中、公开→私密、祖先隐私切换、授权、永久缺图和 cv=4 URL，0 破图、0 对象图标 Cache Storage 条目。
+
+### 修复「经常访问」公开图标重复请求（PROB-38）
+
+- 根因：首页「经常访问」与普通分类会把同一本公开书签各渲染一个 `BookmarkCard`，两处本应命中同一条匿名对象代理 URL。但两层问题叠加导致同一图标被请求两次：① `src/views/Home.svelte` 渲染「经常访问」的 `CategorySection` 漏传 `publicCategoryIds`（默认空集合），登录态下 `isBookmarkIconAccessRequired` 把该区公开书签判成需要授权，于是发带 `key` 的 URL、普通分类发匿名 URL——两条不同 URL 各请求一次，带 `key` 的那条还绕过公开 edge cache；② 即便 URL 相同，两个 `BookmarkCard` 实例仍在同一 tick 各自 fetch。
+- 修复：两处协同，都是最小改动。① `src/views/Home.svelte` 把 `publicCategoryIds` 传给「经常访问」的 `CategorySection`，公开书签在两处生成同一匿名 URL；私密书签与落在私密树下的公开书签仍带 `key`。② `src/lib/localBookmarkIconCache.ts` 对同源对象代理 URL 合并**在途**请求：按完整 URL（含 `v`/`cv`/`key`）索引，同一 tick 的重复加载共用一次网络请求，各自生成独立可回收 object URL，成功或失败都立即移除索引；不缓存完成结果，跨视图重挂仍重新经过可见性闸门。
+- 影响：生产 `perf:audit` 的首页与搜索恢复阶段各减少 4 次重复图标请求（共 8 次），图标请求总数由 264 降至预算内；滚动阶段逐图标请求、对象图标 `no-store`、授权 `private, no-store` 和隐私撤回边界均不变。
+- 验证：`npm run type-check` 318 files 0/0、`npm test` 134 files、`npm run build`、`git diff --check` 通过。单测覆盖同 URL 在途合并与独立 object URL、不跨授权/版本合并、各类失败后可重试；新增首页集成回归断言「经常访问」公开图标与普通分类区使用同一匿名 URL、私密与继承私密图标仍带 `key`。本地 build overlay 真实 Chrome 实测首页与搜索阶段图标请求由 17 降到 13；推送部署后以生产 `perf:audit` 复核 ≤260 门槛。
+
+## v0.7.2 — 2026-09-30
+
+### 修复登录态首页私密书签图标停在文字兜底（Issue #28）
+
+- 根因：`/api/icon/:id` 对匿名请求按设计返回 `X-Icon-Fallback: 1` 的文字兜底图。私密书签、以及挂在私密分类（或其后代）下的公开书签都需要短期授权 `key` 才返回真实图标，而首页卡片此前没有接 `withIconAccessKey()`——该方法原先只在 `src/components/admin/*` 使用。于是登录态首页的私密书签永远停在兜底图；打开编辑弹窗会触发 `POST /api/bookmarks/:id/icon-cache/refresh` 写入 `icon_blob`，图标才"恢复"。
+- 修复：把授权 key 接进书签图标状态推导链路。`src/lib/bookmarkCardIconState.ts` 的 `deriveBookmarkCardIconBase()`/`deriveBookmarkCardIconState()` 新增 `iconAccessKey`，经 `withIconAccessKey()` 作用于 `proxiedHttpIconUrl`，并让 key 参与 `createBookmarkCardIconStateKey()`——key 到位、续签或清除时重置失败态并重新预取，不被首次匿名兜底锁住。
+- 判定规则收敛为一处：`src/lib/adminListState.ts` 新增 `getPublicCategoryIds()` 与 `isBookmarkIconAccessRequired()`，与 worker 的 `getPublicCategoryIds`/`isBookmarkIconAnonymouslyVisible` 严格互补（含私密祖先链、循环分类、`0/1` 与布尔混用）。判定用「可见集合」而非「隐藏集合」，使「书签指向已被删除的分类」这类陈旧数据也落到需要授权的一侧，避免永久兜底。
+- 接线范围：`BookmarkCard`、`CategorySection`（逐条判定，覆盖「经常访问」这类混合区块）、`HomeCategoryScope`、`Sidebar`、`SpotlightBookmarkIcon`/`SearchSpotlight`、`Home`。key 由调用方按隐私判定下发，公开对象保持匿名 URL 以保留 edge / Service Worker 缓存；未登录时不下发。
+- 顺带修正两处既有缺陷：`worker/routes/icon.ts` 的 `/icon/:id` 与 `/category-icon/:id` 异常分支此前无条件返回公开缓存策略（`public, max-age=300`），合法 key 的私密请求异常时会留下可被浏览器 HTTP 缓存复用的兜底图，现改为 `private, no-store`；`src/lib/iconAccessKey.ts` 的 `clearIconAccessKey()` 无法取消在途请求，旧 promise 可能在登出/改密后重新发布过期 key，现用授权代次作废其回调。
+- 验证：`npm run type-check` 318 files 0/0、`npm test` 133 files/984 tests、build 成功；浏览器 L2（隔离实例 1280×800）公开书签匿名 `public, max-age=604800`、私密与私密分类树下书签带 key 且 `private, no-store`，三条卡片均渲染真实图标，Cache Storage 无私密图标条目。反向对照：把逐条判定改回无条件带 key、去掉授权代次判断、去掉异常分支的授权缓存策略，对应用例分别精确失败。独立 `workflow-reviewer` 复核发现的另一项既有问题（图标代理的匿名可见性判定发生在 edge cache 命中之后，可导致私密图标经缓存泄露）不在本 Issue 范围，已登记为 `docs/BACKLOG.md` 的 PROB-38。
+
+### 修复页面底部书签右键菜单被视口裁掉（Issue #30）
+
+- 根因：`BookmarkContextMenu.svelte` 固定从卡片下沿向下展开（`top: calc(100% - 6px)`），页面末尾最后一排卡片下方没有空间，菜单与「编辑」按钮被视口底边裁掉，真实鼠标无法命中。
+- 修复：菜单挂载、更新、滚动或视口 resize 后读取父级卡片与菜单自然高度；有足够下方空间时保持向下，有足够上方空间时改为向上，否则按较大一侧夹紧 `max-height` 并允许内部滚动。保留 `position:absolute`、左右 8px、z-index、sortable filter、右键/长按、外部点击与 Escape 语义；嵌套分类选择器先消费 Escape，外层菜单控件的 Escape 仍可关闭菜单。
+- 验证：type-check 318 files 0/0、npm test 134 files/991 tests、build 成功；新增 7 条几何/移动选择器/Escape 组件测试，去掉 placement 决策后 4 条精确失败。隔离 Chrome 1280×800、96 条书签滚到文档末尾真实右键：菜单 `top=701.13/bottom=745.79`，编辑按钮完全在视口内，真实点击打开编辑弹窗。
+
+### 修复登录态切回标签页后首页私密书签消失（Issue #29）
+
+- 根因：`src/App.svelte` 把焦点/可见性刷新无条件接到 `refreshPublicData()`；该函数在登录态仍以 `auth=false` 调 `api.public.getData(false)`（`src/lib/api.ts` 的 `publicApi.getData` 默认不带 Authorization），拿到匿名公开数据后经 `applyPublicData()` 覆盖首页绑定的 `publicStore`，而 `adminStore` 保留私密数据——于是首页只剩公开书签、后台却仍显示全部内容。
+- 修复：新增 `src/lib/dataService.ts` 的 `refreshVisibleData()`，在事件触发时（不是在安装监听器时）读取 `isLoggedIn()` 分流：已登录走 `refreshLoggedInData()`（默认 `forceRemote=false`，保留 Issue #25 的数据版本门控），未登录走 `refreshPublicData()`。
+- 401 降级：会话在后台失效时清 `authStore`/`adminStore`/**`publicStore`**/管理员快照后再回退公开刷新；`publicStore` 必须一起清，否则公开回退若也无快照且非 forbidden 失败，首页会在已登出状态下继续显示私密投影。
+- 非鉴权错误按 `refreshPublicData()` 既有契约经 `hooks.onRootError` 上报，不再静默吞掉。
+- 验证：`npm run type-check` 318 files 0/0、`npm test` 131 files/967 tests、build 成功；浏览器 L2（隔离实例 1280×800）四种组合——登录+public_mode 开（私密书签保留、无匿名 `/api/public/data`）、登出+公开模式、登录+public_mode 关、双标签页设置同步（`/api/data/version` 带 Authorization）；401 + 公开回退 500 场景首页正确降级为仅公开书签并清除会话。独立 `workflow-reviewer` 复核 PASS。
+
 ### Spotlight 结果显示真实书签图标
 
 - Spotlight 结果行接入首页书签图标解析、Iconify 代理、本地缓存、缓存图标代理和失败回退链路；有真实图标时显示图片，图标加载失败或无图片时回退到书签自定义文字/标题首字符。
@@ -57,7 +746,7 @@
 
 ### 后台管理界面审计整改 P0（对比度 / 焦点环 / 主题基建）
 
-- 由 web-design-guidelines / frontend-design / brand-guidelines / extract-design-system / theme-factory 五个前端技能驱动的只读审计，决策记录 `docs/plans/ADMIN_UI_REDESIGN_DEVELOPMENT.md`；本版本落地其 P0 批次。P1（站点设置布局拆分、单滚动、预览联动）与 L2/L3 浏览器验证欠账见该文档。
+- 由 web-design-guidelines / frontend-design / brand-guidelines / extract-design-system / theme-factory 五个前端技能驱动的只读审计，决策记录 `docs/plans/_archive/ADMIN_UI_REDESIGN_DEVELOPMENT.md`；本版本落地其 P0 批次。P1（站点设置布局拆分、单滚动、预览联动）与 L2/L3 浏览器验证欠账见该文档。
 - 对比度按 WCAG AA 复算收敛：浅色占位符 `#94a3b8→#64748b`（2.56→4.76）、暗色占位符 `#64748b→#94a3b8`（3.59→6.66）、后台徽标文字 `#64748b→#475569`（4.34→6.92）、浅色危险红 `#dc2626→#b91c1c`（4.41→5.91）。
 - 主题基建：`src/app.css` 补 `color-scheme: light` 与 `:root[data-theme='dark']{color-scheme:dark}`；`index.html` 内联脚本让 `theme-color` 随 `data-theme` 动态（暗 `#08111f` / 浅 `#f8fafc`，MutationObserver 监听）。
 - 消灭 token 漂移：`adminListPanels.css` 主按钮硬编码 `#2563eb/#fff` 收敛到 `var(--admin-accent)` + 新增 `--admin-accent-ink`（浅 `#ffffff` / 暗 `#0f172a`）。独立复核发现并修复 token 化引入的暗色主按钮对比度回归（白字 on `#7dd3fc` 仅 1.67:1），修复后浅 5.17 / 暗 10.71。
@@ -66,7 +755,7 @@
 
 ### 后台管理界面审计整改 P1/P2（设置布局 / 暗色层级 / 无障碍）
 
-- 承接 `docs/plans/ADMIN_UI_REDESIGN_DEVELOPMENT.md` 的 P1/P2 批次（P0 已在上一节交付）。
+- 承接 `docs/plans/_archive/ADMIN_UI_REDESIGN_DEVELOPMENT.md` 的 P1/P2 批次（P0 已在上一节交付）。
 - 站点设置信息架构拆分：二级菜单 6→7，新增「高级与视觉」，把 `AdvancedSettingsSection`（背景 / 尺寸 / 卡片表面 / 分类标题视觉）从「外观与卡片」移出，后者只留配色方案与卡片风格。外观分区展开高级后此前编辑区内滚约 1149px（约 3.5 屏），拆分后单分区编辑区内滚为 0。
 - 设置页去三层嵌套滚动：`.settings-panel` 移除 `height: clamp(...)` 锁高与 `overflow: hidden`，编辑区不再自成滚动，交由外层 `.admin-content` 单一滚动；`.settings-preview-column` 改 `position: sticky` 桌面粘性跟随；`@media (max-width:1320px)` 收起为单列并让预览回落静态流。
 - 布局与导航小栅格：`.navigation-grid > .field`（显示位置）占整行，两个条件开关成对落在下一行，修复「分类分行显示」开关此前单独占一行、右侧留白的孤立感。
@@ -323,7 +1012,7 @@
 ### PROB-13：用户自行完成 iOS 与 iframe 测试
 
 - 用户明确将真实 iPhone/iOS Safari 输入放大与 S4 iframe 嵌入测试书目标记完成，备注为用户自行测试；代理未验证或伪造真机证据。
-- Tier 1 自定义 JS 临时写入/恢复流程已执行且原值已恢复，但公开数据刷新/缓存路径未能提供可靠的执行观测；正式 CSP 断言与导入提示仍待专用备份文件。
+- 该轮 Tier 1 自定义 JS 临时写入/恢复流程已执行且原值已恢复，但公开数据刷新/缓存路径未能提供可靠的执行观测；当时未完成正式 CSP 断言与导入提示。后续独立浏览器证据见 [自定义 JS 与 CSP 验收](#prob-13-自定义-js-与-csp-验收)，保留本轮观察限制，不追认本轮通过。
 
 ### 桌面端子分类标签不再被浮动操作行遮挡
 
@@ -596,7 +1285,7 @@
 
 - `docs/reference/API_CONTRACT.md` 设置接口新增字段级契约表（PROB-08）：按 `SETTINGS_KEYS` 顺序列全 30 个键的类型、取值范围、归一化行为与默认值，并显式区分「服务端钳制」与「只是类型注释、服务端不钳制」（`site_title_font_size`、`card_background_opacity`、`background.blur`/`mask`、`content_layout` 数值项）；同时点明未知键在写入与读取聚合两个方向都会被丢弃，`most_visited_count` 与 `site_title_show` 在 PUT 没有类型校验、只在读取时归一化。原先落在浏览器同步小节之后的 4 段设置说明移回「设置接口」标题下，长度上限段不再重复逐字段数字。
 - `docs/guides/TROUBLESHOOTING.md` 补齐 `/install` 失败三态的定位路径（PROB-22）：核对发现三态原先都无法靠用户可见文案定位（页面显示「还缺少部署密钥」「还缺少存储绑定」「数据库暂时不可用」，文档小节标题却是「安装令牌无效」「Missing binding」「数据库初始化失败」），且 `unavailable` / `session_store_unreachable` 完全没有对应小节。现新增状态对照表（页面标题 + `data.state` / `data.reason` + 触发条件 → 小节），把用户文案写进既有小节标题，新增「会话存储暂时不可用」小节，并区分 `database_unreachable` 与 schema 缺失（手动执行 `schema.sql` 修不好前者）。
-- `docs/plans/DEV_TASK_BREAKDOWN_UI_NAV_EXPORT.md` §12 明确台账里的数值断点证据属于「一次性人工 CDP 证据，不构成持续回归」（PROB-16）。把它们补进 `scripts/chrome-regression.mjs` 需要可达的 `BASE_URL` 与真实管理员凭据（该脚本的安全场景会真实改写再还原管理员密码），还需额外引入视口仿真、确定性分类/书签 fixture 与下载断言；`AGENTS.md` 禁止未经要求启动本地服务或部署，因此这些断点并入 PROB-13 的部署后验收，回归套件本身未改动。
+- `docs/plans/_archive/DEV_TASK_BREAKDOWN_UI_NAV_EXPORT.md` §12 明确台账里的数值断点证据属于「一次性人工 CDP 证据，不构成持续回归」（PROB-16）。把它们补进 `scripts/chrome-regression.mjs` 需要可达的 `BASE_URL` 与真实管理员凭据（该脚本的安全场景会真实改写再还原管理员密码），还需额外引入视口仿真、确定性分类/书签 fixture 与下载断言；`AGENTS.md` 禁止未经要求启动本地服务或部署，因此这些断点并入 PROB-13 的部署后验收，回归套件本身未改动。
 - `docs/plans/TODO.md` 与 `docs/plans/PROBLEM_HANDLING_TASK_LIST.md` 同步勾选与「处理结果」行。
 - 验证：`npm run type-check` 0 errors / 0 warnings；`npm test` 100 files / 683 passed；`npm run build` 成功；`git diff --check` 通过；独立 Reviewer 逐条复核后判定 PASS。未运行部署、`smoke-test.mjs`、`chrome-regression.mjs` 与浏览器套件；PROB-02 的批量移动弹窗默认值只有纯函数单测与源码接线断言，未做真机目视确认。
 
@@ -624,7 +1313,7 @@
 - PROB-29、PROB-30 是实现 PROB-01 与 REQ-08 时新发现的条目：R-05 的「禁用非法目标」表述仍待改写；`src/lib/appData.ts:253-255` 在无预设时仍回退旧的共用冷蓝 `#2563eb`/`#7dd3fc`（本轮授权范围只含 13 套毛玻璃预设，未改）。
 - `docs/reference/API_CONTRACT.md` 书签端点表补上此前漏列的 `POST /api/bookmarks/reorganize`，并补齐其请求形状与 `CONFLICT=1006` 语义。
 - `docs/reference/GITHUB_ISSUES_REQUIREMENTS.md` 快照更新到 2026-09-03，Open 数量 5 → 6，补入 #15（EdgeOne 部署兼容请求，标题仍是模板占位，维护者已回复未排期），并说明它未获实现承诺、未分配 R 编号。
-- `docs/plans/UI_UX_Plan.md` 补文首状态块，明确它是已被 `SETTINGS_UI_UX_ADJUSTMENT_REQUIREMENTS.md` 取代的原始草案，不作为待办；`docs/README.md` 计划清单补上它与 `DEV_TASK_BREAKDOWN_GITHUB_ISSUES.md`。
+- `docs/plans/_archive/UI_UX_Plan.md` 补文首状态块，明确它是已被 `SETTINGS_UI_UX_ADJUSTMENT_REQUIREMENTS.md` 取代的原始草案，不作为待办；`docs/README.md` 计划清单补上它与 `DEV_TASK_BREAKDOWN_GITHUB_ISSUES.md`。
 - 验证：`npm run type-check` 0 errors / 0 warnings；`npm test` 100 files / 680 passed；`npm run build` 成功；`git diff --check` 通过。未运行部署、`smoke-test.mjs`、`chrome-regression.mjs` 与浏览器套件。
 
 

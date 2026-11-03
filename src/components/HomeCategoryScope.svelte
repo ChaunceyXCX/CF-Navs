@@ -1,3 +1,5 @@
+<svelte:options runes />
+
 <script lang="ts">
   import { tick } from 'svelte'
   import { getAnchoredOverlayPosition } from '../lib/navigationLayout'
@@ -7,30 +9,64 @@
     id: number
     title: string
     icon: string | null
+    icon_display?: 'image' | 'text' | 'empty'
+    icon_revision?: string | null
+    icon_write_epoch?: number
     count: number
   }
 
   type AsyncVoid<T = void> = T | Promise<T>
 
-  export let rootId: number
-  export let title = ''
-  export let icon: string | null = null
-  export let totalCount = 0
-  export let children: HomeCategoryScopeItem[] = []
-  export let activeId: number | null = null
-  export let panelId = ''
-  export let reserveActions = false
-  export let onSelect: ((id: number) => AsyncVoid) | undefined = undefined
-  export let onCreateSubcategory: (() => AsyncVoid) | undefined = undefined
-  /** 移动端把分类操作统一收进「更多操作」菜单；桌面端由 CategorySection 操作行提供。 */
-  export let onAddBookmark: (() => AsyncVoid) | undefined = undefined
-  export let onRequestSort: (() => AsyncVoid) | undefined = undefined
-  export let highlightedId: number | null = null
+  interface Props {
+    rootId: number
+    title?: string
+    icon?: string | null
+    icon_display?: 'image' | 'text' | 'empty'
+    icon_revision?: string | null
+    icon_write_epoch?: number
+    totalCount?: number
+    /** 子分类列表（普通数组 prop，不是 snippet；Home 以 `children={...}` 显式传入，不传插槽内容）。 */
+    children?: HomeCategoryScopeItem[]
+    activeId?: number | null
+    panelId?: string
+    reserveActions?: boolean
+    onSelect?: (id: number) => AsyncVoid
+    onCreateSubcategory?: () => AsyncVoid
+    /** 移动端把分类操作统一收进「更多操作」菜单；桌面端由 CategorySection 操作行提供。 */
+    onAddBookmark?: () => AsyncVoid
+    onRequestSort?: () => AsyncVoid
+    highlightedId?: number | null
+    /** 对匿名访客可见的分类 id 集合；不在其中的分类图标才需要授权 key。 */
+    publicCategoryIds?: Set<number>
+    iconAccessKey?: string
+  }
 
-  let tabList: HTMLElement | null = null
+  let {
+    rootId,
+    title = '',
+    icon = null,
+    icon_display = undefined,
+    icon_revision = undefined,
+    icon_write_epoch = undefined,
+    totalCount = 0,
+    children = [],
+    activeId = null,
+    panelId = '',
+    reserveActions = false,
+    onSelect,
+    onCreateSubcategory,
+    onAddBookmark,
+    onRequestSort,
+    highlightedId = null,
+    publicCategoryIds = new Set(),
+    iconAccessKey = '',
+  }: Props = $props()
 
-  $: resolvedPanelId = panelId || `home-category-panel-${rootId}`
-  $: rootActive = activeId == null || String(activeId) === String(rootId)
+  // 元素引用在 {#if} 内 bind:this，用 $state 避免 non_reactive_update（DOM 节点不被代理）。
+  let tabList: HTMLElement | null = $state(null)
+
+  const resolvedPanelId = $derived(panelId || `home-category-panel-${rootId}`)
+  const rootActive = $derived(activeId == null || String(activeId) === String(rootId))
   function select(id: number): void {
     void onSelect?.(id)
   }
@@ -38,15 +74,18 @@
   // 移动端把分类操作、新增书签、排序三个入口统一收进「更多操作」菜单（计划 T6 / PROB-11）。
   // 桌面端「新建子分类」仍是直显按钮，另两个仍在 CategorySection 的操作行里；两处都渲染，
   // 由 720px 断点的 CSS 决定谁可见——`display: none` 会同时移出无障碍树，不会出现重复操作。
-  let moreTrigger: HTMLButtonElement | null = null
-  let moreMenu: HTMLElement | null = null
-  let moreOpen = false
-  let moreMenuStyle = ''
+  let moreTrigger: HTMLButtonElement | null = $state(null)
+  let moreMenu: HTMLElement | null = $state(null)
+  let moreOpen = $state(false)
+  let moreMenuStyle = $state('')
 
-  $: moreMenuId = `home-category-more-${rootId}`
-  $: hasMoreActions = Boolean(onAddBookmark || onCreateSubcategory || onRequestSort)
-  // 菜单收起时若可用操作被撤掉（例如进入排序会话），避免留下指向已消失菜单的展开态
-  $: if (!hasMoreActions && moreOpen) moreOpen = false
+  const moreMenuId = $derived(`home-category-more-${rootId}`)
+  const hasMoreActions = $derived(Boolean(onAddBookmark || onCreateSubcategory || onRequestSort))
+  // 菜单收起时若可用操作被撤掉（例如进入排序会话），避免留下指向已消失菜单的展开态。
+  // 与原 `$:` 一样先于 DOM 更新执行；写回 moreOpen 引起的重跑条件为假、为空操作。
+  $effect.pre(() => {
+    if (!hasMoreActions && moreOpen) moreOpen = false
+  })
 
   // 这个触发器紧跟标题，不靠右对齐：移动端 `.scope-title-row` 会换行，标题短的分类里它离
   // 视口左边只有 100 px 出头。菜单原先固定 `right: 0`，160 px 的最小宽度直接把左边缘顶到
@@ -149,10 +188,10 @@
   }
 </script>
 
-<svelte:window on:pointerdown={handleWindowPointerDown} on:keydown={handleWindowKeyDown} on:resize={handleWindowResize} />
+<svelte:window onpointerdown={handleWindowPointerDown} onkeydown={handleWindowKeyDown} onresize={handleWindowResize} />
 <section class="category-scope" class:has-children={children.length > 0} class:has-actions={reserveActions} class:selected={rootActive} class:highlighted={highlightedId === rootId} data-home-category-scope={rootId} aria-labelledby={`home-category-heading-${rootId}`}>
   <div class="scope-heading">
-    <CategoryIcon category={{ id: rootId, title, icon }} size="var(--category-root-icon-size, 40px)" className="scope-icon" />
+    <CategoryIcon category={{ id: rootId, title, icon, icon_display, icon_revision, icon_write_epoch }} size="var(--category-root-icon-size, 40px)" className="scope-icon" iconAccessKey={publicCategoryIds.has(Number(rootId)) ? '' : iconAccessKey} />
     <div class="scope-accent" aria-hidden="true"></div>
     <div class="scope-copy">
       <div class="scope-title-row">
@@ -163,7 +202,7 @@
             class:active={rootActive}
             aria-pressed={rootActive}
             aria-controls={resolvedPanelId}
-            on:click={() => select(rootId)}
+            onclick={() => select(rootId)}
           >
             <span class="scope-root-title">{title}</span>
             <span class="scope-total-count">（{totalCount}）</span>
@@ -180,7 +219,7 @@
               aria-haspopup="menu"
               aria-expanded={moreOpen}
               aria-controls={moreMenuId}
-              on:click={() => void toggleMore()}
+              onclick={() => void toggleMore()}
             >
               <svg viewBox="0 0 24 24" aria-hidden="true" class="scope-action-icon">
                 <path d="M6 12h.01M12 12h.01M18 12h.01" />
@@ -196,17 +235,17 @@
                 bind:this={moreMenu}
               >
                 {#if onAddBookmark}
-                  <button type="button" class="scope-more-item" role="menuitem" on:click={runAddBookmark}>
+                  <button type="button" class="scope-more-item" role="menuitem" onclick={runAddBookmark}>
                     新增书签
                   </button>
                 {/if}
                 {#if onCreateSubcategory}
-                  <button type="button" class="scope-more-item" role="menuitem" on:click={runCreateSubcategory}>
+                  <button type="button" class="scope-more-item" role="menuitem" onclick={runCreateSubcategory}>
                     新建子分类
                   </button>
                 {/if}
                 {#if onRequestSort}
-                  <button type="button" class="scope-more-item" role="menuitem" on:click={runRequestSort}>
+                  <button type="button" class="scope-more-item" role="menuitem" onclick={runRequestSort}>
                     排序
                   </button>
                 {/if}
@@ -221,8 +260,8 @@
             aria-label={`${title} 分类范围`}
             tabindex="-1"
             bind:this={tabList}
-            on:keydown={handleTabKeyDown}
-            on:wheel={handleTabWheel}
+            onkeydown={handleTabKeyDown}
+            onwheel={handleTabWheel}
           >
 
             {#each children as child (child.id)}
@@ -235,10 +274,10 @@
                 tabindex={rootActive ? 0 : childActive ? 0 : -1}
                 class:active={!rootActive && childActive}
                 title={child.title}
-                on:click={() => select(child.id)}
+                onclick={() => select(child.id)}
               >
-                {#if child.icon}
-                  <CategoryIcon category={{ id: child.id, title: child.title, icon: child.icon }} size="var(--category-child-icon-size, 22px)" className="scope-tab-icon" />
+                {#if child.icon || child.icon_display === 'image'}
+                  <CategoryIcon category={child} size="var(--category-child-icon-size, 22px)" className="scope-tab-icon" iconAccessKey={publicCategoryIds.has(Number(child.id)) ? '' : iconAccessKey} />
                 {/if}
                 <span>{child.title}</span>
                 <small>{child.count}</small>
@@ -342,7 +381,7 @@
     flex: 0 1 auto;
     min-width: 0;
     max-width: 100%;
-    color: var(--home-text-color);
+    color: var(--category-root-title-color, var(--home-text-color));
     font-size: var(--category-root-font-size, 1.35rem);
     font-weight: 700;
     line-height: 1.15;
@@ -363,6 +402,7 @@
     font-weight: 600;
     font-variant-numeric: tabular-nums;
     opacity: var(--home-muted-opacity);
+    color: var(--home-text-color);
   }
   .scope-action {
     display: inline-flex;
@@ -492,7 +532,7 @@
 
 
   .scope-tabs button {
-    color: var(--home-text-color, currentColor);
+    color: var(--category-child-title-color, var(--home-text-color, currentColor));
     font: inherit;
     font-size: var(--category-child-font-size, 0.82rem);
     font-weight: 600;
@@ -538,7 +578,7 @@
 
   .scope-tabs small {
     min-width: 1.2rem;
-    color: inherit;
+    color: var(--home-text-color);
     font-size: 0.66rem;
     font-variant-numeric: tabular-nums;
     text-align: right;

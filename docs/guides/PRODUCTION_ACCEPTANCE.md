@@ -11,12 +11,12 @@ CF-Navs 的部署来源是 `develop`：代码推上去之后 Cloudflare 自动�
 | 层 | 副作用 | 怎么跑 | 覆盖内容 |
 | --- | --- | --- | --- |
 | **Tier 0** | 无服务端状态变化 | `npm run accept:prod`，随时可跑 | 首访/二访、Service Worker 与预缓存、离线、匿名边界、导出子集、弹窗尺寸、三档截图、登出撤销 |
-| **Tier 1** | 改设置再还原 | 逐次授权，手动执行 | 自定义 JS 执行（S3）、13 套预设逐套视觉（REQ-08b） |
+| **Tier 1** | 改设置再还原 | 获得对应写入与恢复授权后，通过真实页面控件执行；可使用浏览器自动化 | 自定义 JS 执行（S3）、导航布局切换、13 套预设逐套视觉（REQ-08b） |
 | **Tier 2** | 破坏性 | **生产禁止**，只在本地实例做 | replace/merge 导入（会清库）、管理员密码轮换 |
 
 Tier 0 之所以能无条件跑，是因为它连一次写接口都不调。唯一会改变服务端状态的动作是登出，而它作废的只是本次脚本自己创建的会话。
 
-`npm run regression:chrome` 里的密码轮换场景属于 Tier 1，已默认关闭 —— 见 §6。
+`npm run regression:chrome` 里的密码轮换场景属于 Tier 2，已默认关闭，仅在隔离本地实例获得明确授权后执行 —— 见 §6。
 
 ## 2. 标准流程
 
@@ -53,6 +53,14 @@ npm run perf:audit
 
 `npm run accept:prod` 的报告里带 `deployedBundle`，记录本次实际测到的 bundle 文件名。它的用途是事后分辨「这份报告对应哪个构建」，不是用来和本地比对。
 
+### 同仓库关联多个 Cloudflare 账号时
+
+- GitHub 上不同账号的 Worker 可能都叫同一个名字，检查名称相同不能证明目标账号已部署。读取 check-runs 时使用 `filter=all` 并处理分页；按 `details_url` 中已核准的 Cloudflare 账号、Worker 和 build ID 区分，不能只取默认返回的最新一项。同一 build 可能保留较早的 in_progress 记录，要核验它对应的成功完成记录。
+- GitHub API 调用前确认活动账号，Git 推送的 SSH 身份另行核验。实际账号 ID 与站点 URL 只存在本地验证配置/证据，不写进仓库。
+- 如果最新提交只有 GitHub CI 而没有目标账号的 Cloudflare 构建，先检查完整构建历史、Git App 授权、分支及路径过滤；不要把清浏览器缓存、重试旧提交或他账号的成功当作修复。
+- 授权正常但单次事件未建立构建时，可由维护者明确授权一次标注用途的空提交触发新 push。新旧 tree 应相同，禁止强推；它只是恢复手段，不证明平台内部根因，也不是自动循环重试机制。推送可能触发所有已关联账号的既有自动化，需事先说明，不能擅自断开其他账号。
+- 目标账号构建成功后，仍按本节的可观察行为和真实站点验收确认上线，不以本地/线上产物哈希必须相同作为门槛。
+
 ## 3. 配置
 
 ```jsonc
@@ -85,41 +93,67 @@ npm run perf:audit
 | `cache-storage-within-budget` | PROB-23 | Cache Storage 总量 ≤ 5 MiB |
 | `home-images-not-broken` | PROB-23 | 无 `naturalWidth === 0` 的已加载图片 |
 | `anonymous-admin-data-denied` | PROB-20c | 匿名 `/api/admin/data` 得到 401 或 `code=1001` |
-| `anonymous-private-bookmark-icon-denied` | PROB-20c | 匿名取私密分类下书签的图标被拒 |
-| `anonymous-private-category-icon-denied` | PROB-20c | 匿名取私密分类图标被拒 |
+| `prob38-public-to-private-same-url` | PROB-38 | 公开图标匿名预热后改为私密，使用同一 `v` 的匿名请求不得返回旧真实正文，必须为 `no-store` identity-free fallback |
+| `prob38-ancestor-privacy-flip` | PROB-38 | 公开祖先→私密、私密祖先→公开分别验证深层 bookmark/category-icon 的拒绝与恢复 |
+| `prob38-orphan-cycle-fail-closed` | PROB-38 | 缺失父级、孤儿分类和循环分类的 bookmark/category-icon 匿名请求均 `no-store` fallback |
+| `prob38-sw-cache-migration` | PROB-38 | 新 SW 激活后旧 `cf-navs-v*` runtime cache 删除，`/api/category-icon/*` 不进入 Cache Storage |
+| `export-control-restores-test-target` | PROB-13 | 主动切到本轮自建空标签，测量前激活原测试页，防止后台 requestAnimationFrame 永久等待；精确清理额外标签 |
 | `partial-export-rejects-empty-selection` | PROB-14 | 清空真实分类选择后，导出按钮禁用 |
 | `partial-export-child-with-parent-no-settings` | PROB-14 | 实际下载只含所选非空子分类、必要父分类及该子分类的全部书签，设置为 `null` |
 | `partial-export-child-with-settings` | PROB-14 | 同一子集在设置开关开启后带出完整设置，分类与书签内容不变 |
 | `partial-export-root-includes-children` | PROB-14 | 选择父分类时，下载包含该父分类、全部直接子分类及其书签并集 |
 | `bookmark-modal-*`（3 项） | PROB-13 U1–U4 | 桌面与 390x844 下弹窗渲染、圆角一致、不溢出视口 |
-| `bookmark-modal-actions-single-row-on-mobile` | PROB-13 U1–U4 | 移动端底部操作栏所有按钮同一行且不溢出 |
+| `bookmark-modal-actions-single-row-on-mobile` | PROB-13 U1–U4 | 精确匹配表单直属动作栏，取消/保存两按钮可见、同一行、可命中且不溢出卡片或视口；缺失/隐藏/空栏一律失败 |
+| `modal-real-input-*` | PROB-13 U1–U4 | 桌面与移动视口用真实鼠标打开/取消分类和书签弹窗，点击表单输入框后用 Tab/Enter 取消书签；等待懒加载可见，不合成 DOM 事件 |
+| `modal-negative-control-*` | PROB-13 U1–U4 | 在本轮页面依次注入动作栏缺失、空栏、隐藏、溢出和遮挡，断言均被拒绝；每项恢复 DOM 后重新通过，不写服务端 |
+| `modal-flow-no-server-writes` / `modal-flow-browser-diagnostics` | PROB-13 U1–U4 | 弹窗阶段无业务写入、非预期 HTTP/网络错误、Chrome Log 错误、console error 或页面异常；导航/交互及取消分别留证 |
 | `viewport-screenshots-captured` | PROB-17 | 430x932 / 768x1024 / 1440x900 三档截图落盘 |
 | `logout-accepted` + `revoked-token-rejected-within-window` | PROB-19v | 登出后旧 token 在窗口内被拒，并记录实际生效毫秒数 |
 | `no-page-exceptions` / `no-console-errors` | PROB-13 | 全程无页面异常与 console error |
 
+> PROB-38 四项是图标隐私专项验收目标：当前 `accept:prod` 通用脚本尚未自动执行它们。当前提交已由本地 L1 smoke、真实隔离 Worker/Chrome 和单测覆盖；推送后应按上述 ID 运行只读专项探针并把结果写入发布记录，不能用通用首页/Cache Storage 通过推断 PROB-38 已通过。
+
 导出验证通过真实鼠标操作备份面板，在应用的下载边界捕获实际 Blob；不由探针自行构造备份。按 ID 和完整字段比对分类、书签及设置，整站备份冒充子集、缺失父分类、混入父级/兄弟书签、丢记录或设置开关失效都会失败。生产备份正文只驻留内存，原生磁盘下载被禁止，报告只保存计数与判定，不保存书签内容。
 
+定向定位可设置 `ACCEPT_SCOPE=modals`；报告会列出未执行的首访、离线、匿名、导出及三档首页截图，不得把定向通过当全量验收。默认 `all` 仍运行完整流程。中途异常也记录失败、已执行检查及资源清理，不能丢失报告。
+
 报告与截图写到 `tmp/acceptance/`（该目录已被 Git 忽略）。报告在落盘前过一遍脱敏，凭据不会出现在文件里。
+
+**必需 UI 缺失不是 `SKIP`。** 动作栏定位失败、无按钮、懒加载超时或取消无效均失败；报告中的 `modals` 保存几何、真实输入结果、负向对照和该阶段请求。分类弹窗未定义 Escape 关闭，不凭空要求该行为；书签键盘取消先通过真实点击进入输入框，再使用 Tab 到取消按钮并按 Enter。报告同时保留 `initialFocusInside`；该路径不等于首次打开自动聚焦或完整焦点陷阱通过。首访/离线等待可观测页面就绪，不用固定短延时替代；清站点状态后先离开旧文档再开始首访计数。
 
 **`SKIP` 不是失败。** 实例上不存在被测对象（例如一个私密分类都没有）时记为 skip 并说明原因，不计入失败，也不影响退出码 —— 否则真失败会被噪声淹没。要验证私密对象的匿名边界，实例上至少得有一个私密分类和一个挂在它下面的书签。
 
 PROB-14 还要求至少有一个带书签的二级分类，并有不属于该子分类的书签用于验证排除边界。找不到该样本时，`partial-export-real-download` 记为 `skip`，该项仍未验收；不要因脚本退出码为 0 而关闭验证欠账。追加/覆盖回导仍只在隔离本地实例中，通过实际文件导入流程验证。
 
-## 5. Tier 0 覆盖不到的，仍然要人工
+## 5. Tier 0 之外的验证边界
 
-这些不是「懒得自动化」，是自动化拿不到有效证据：
+下表说明通用 Tier 0 脚本未覆盖的范围，不是当前待办清单，也不表示这些项目全部无法自动化。真实设备限制、需要写入授权的专项和历史已完成验收须区分；当前欠账看 [BACKLOG.md](../BACKLOG.md)，已交付证据看变更记录。
 
-| 条目 | 为什么必须人工 |
+| 条目 | 环境或副作用边界 |
 | --- | --- |
 | PROB-13 `U1–U4` 的 iOS 输入放大 | iOS Safari 在计算后字号 < 16px 时自动放大页面。这是 iOS Safari 独有行为，桌面 Chrome 的移动仿真不复现 —— 必须真实 iPhone |
 | PROB-13 `L4` 的「已检测到新版本」提示 | 需要连续两次真实部署，第二次部署后旧页面才会收到 SW 更新事件 |
 | PROB-13 `S3` 自定义 JS | 要写入 `custom_js` 设置才能验证真实执行与 CSP 行为，属 Tier 1 |
-| PROB-13 `S3 导入提示` | 要选一个含自定义 JS 的备份文件才会弹确认框。只看提示不点确认是安全的，但需要人工选文件 |
+| PROB-13 `S3 导入提示` | 通过真实文件选择控件加载含自定义 JS 的备份，核对 UTF-8 体积、执行风险与换行后取消；可使用浏览器原生文件选择自动化。不得确认覆盖导入，且应核验没有 `/api/import` 请求 |
 | PROB-13 `S4` 当前页弹层 | 需要一个允许被嵌入的站点作为书签目标，取决于实例数据 |
 | PROB-14 的 replace/merge 导入 | replace 会清库。**只在本地实例验证**，绝不在生产跑 |
 | PROB-19v 的 KV 写入故障注入 | 要让 KV 真的写失败才能走到 `store_unavailable` 分支，生产上没有安全的注入手段 |
 | REQ-08b 13 套预设视觉 | 要逐套写入 `background_preset_id`，属 Tier 1；且「好不好看」需要人眼 |
 | PROB-16 的数值断点 | `820px` 分行 2 行/98px、浮动按钮 `top=18` 这类一次性数值证据，已在台账里明确标为不构成持续回归 |
+| 图标本地优先缓存 v2 | `accept:prod` / `perf:audit` 不检查 IndexedDB 命中；第二次打开零图标请求、改一个图标只重下一张、登出只清私密条目需在授权测试站人工实测 |
+
+### 5.1 自定义 JS 与 CSP 专项的复验步骤
+
+S3 的已完成证据见 [变更记录](../../CHANGELOG.md#prob-13-自定义-js-与-csp-验收)，当前剩余任务只在 [BACKLOG](../BACKLOG.md) 维护。以下是后续复验方法，不表示通用 `accept:prod` 已自动覆盖 S3。
+
+1. 使用专用临时浏览器，先备份原设置到仓库外；确认本轮获准临时修改并恢复 `custom_js`。测试脚本只计数并显示标记，不访问外部服务；已有脚本须保留，不能静默覆盖。
+2. 从后台“自定义样式/脚本”文本框输入。保存前检查隔离预览不执行；实际点击保存并返回首页，验证可见标记、执行计数和 Blob 脚本加载。正常流程同时监听 CSP 违规、控制台、页面异常及网络错误。
+3. 连续点击主题开关，确认同一文档内内容未变时计数不增加；刷新后新文档执行一次。响应头须允许 `script-src 'self' blob:` 且不允许脚本的 `unsafe-inline` / `unsafe-eval`，但响应头检查不能代替执行结果。
+4. 在测试文档内创建无外部副作用的内联脚本及内联事件反例，通过真实点击触发事件；确认均未执行，并分别观察 `script-src-elem` / `script-src-attr` 拦截。只将准确匹配反例的安全日志归类为预期，随后移除反例。
+5. 从真实文件选择按钮加载含中文 JS 的合成备份，分别覆盖小于和大于 1 KiB 的内容及空 JS 对照。核对 UTF-8 字节数、B/KB 显示、执行风险和段落换行；在桌面、平板及手机模拟视口检查提示边界与按钮命中。点击取消或按 Escape，不确认覆盖导入，并核验没有 `/api/import` 请求。
+6. 通过设置表单恢复原值，再回读完整设置核对一致；刷新后确认测试标记消失。退出测试会话并确认撤销，清理专用浏览器/profile。恢复或清理失败必须单独报告，不计为完整通过。
+
+导航布局专项的控件路径、矩阵和图标证据边界见 [导航布局组合复验](ISSUE_BROWSER_REGRESSION.md#导航布局组合复验)。Chrome 手机模拟不替代 iOS/Safari、软键盘、安全区或实际读屏软件。
 
 ## 6. 安全边界
 
@@ -156,6 +190,7 @@ Get-ChildItem $env:TEMP -Directory -Filter 'cf-navs-chrome-profile-*' | ForEach-
 | `temp profile not deleted after 18s of retries` | Windows 上 Chrome 退出后 `first_party_sets.db`、`*.bdic` 等文件的句柄释放滞后于进程退出。**这是 warning 不是 error**：进程已归零，没有安全问题，只是磁盘上留了个目录。按 §7 清掉即可 |
 | `verify.local.json is tracked by Git` | 凭据文件进了版本库。`git rm --cached verify.local.json`，然后**轮换管理员密码** |
 | `Missing verification target origin` | `verify.local.json` 缺 `baseUrl`，或 JSON 语法错误 |
+| 预缓存长期为空，或独立 `CacheStorage.open()` / `put()` 报内部错误 | 先用新的短临时 Chrome profile 对照，避免把 profile 根目录放进多层报告输出目录。Windows 上过长的完整 profile 路径可能导致浏览器存储失败；保留 `CHROME_PROFILE_ROOT` 的系统临时目录默认值，报告/截图仍可输出到仓库外的独立目录。若短路径仍失败，再查站点 SW 与网络，不能放宽缓存断言 |
 | 验收结果与代码不符 | 大概率是在旧版本上跑的。回到 §2 第 3 步确认部署已生效 |
 | `profile removal: EBUSY` | Chrome 刚退出，文件句柄未释放。脚本已做退避重试；仍失败时按 §7 手动清 |
 | localhost 目标返回 502 | `HTTP_PROXY` 拦截了本地请求。用 `curl.exe --noproxy '*'` 或给脚本设 `NO_PROXY=127.0.0.1,localhost` |
@@ -188,5 +223,6 @@ Get-ChildItem $env:TEMP -Directory -Filter 'cf-navs-chrome-profile-*' | ForEach-
 | `npm run regression:chrome` | 生产 | 无（除显式开启密码轮换） | 更早的功能回归：首页/后台/搜索/右键菜单/鉴权探针 |
 | `npm run perf:audit` | 生产 | 无 | 性能预算：图标请求数、Cache Storage、传输量 |
 | `npm run smoke` | 本地 | 有（自建临时实例） | 自己起隔离实例 + 临时 D1，跑 API 端到端后拆除 |
+| `npm run test:icon-storage` | 本地 | 有（隔离 Chrome/临时 IndexedDB） | 原生存储、断网读盘与 100/500/1,000 条五轮暖命中基准；不测 Worker/D1 或生产平台 |
 
 `scripts/lib/cdpSession.mjs` 是 `accept:prod` 用的 CDP 会话层。`chrome-regression.mjs` 目前仍带着自己那份同源的内联实现 —— 两份尚未合并，等它下次需要改连接层时再迁移，不为了去重就动一个已经在用的验证工具。

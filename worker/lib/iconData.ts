@@ -1,4 +1,7 @@
+import { decodeIconDataUri } from '../../shared/iconDataUri'
+import { readBoundedBody } from './boundedBody'
 import type { IconSource } from '../../shared/types'
+import { BlockedFetchTargetError, MAX_SAFE_REDIRECTS, fetchFollowingSafeRedirects, parseTargetUrl } from './pageMetadata'
 
 export interface FetchedIcon {
   bytes: Uint8Array
@@ -19,7 +22,7 @@ function decodeTextPrefix(bytes: Uint8Array, limit = 2048): string {
 }
 
 function looksLikeSvg(bytes: Uint8Array): boolean {
-  const head = decodeTextPrefix(bytes).replace(/^﻿/, '').trim().toLowerCase()
+  const head = decodeTextPrefix(bytes).replace(/^\uFEFF/, '').trim().toLowerCase()
   if (!head || head.startsWith('<!doctype html') || head.startsWith('<html')) {
     return false
   }
@@ -32,7 +35,7 @@ function looksLikeSvg(bytes: Uint8Array): boolean {
 // declared Content-Type. Returns null when the payload is not a genuine image
 // (e.g. an HTML login/redirect page from an auth-gated host), so the caller can
 // refuse to cache garbage as a fake image.
-function sniffImageContentType(bytes: Uint8Array, declaredType: string | null): string | null {
+export function sniffImageContentType(bytes: Uint8Array, declaredType: string | null): string | null {
   const b = bytes
   const len = b.length
 
@@ -88,7 +91,7 @@ function sniffImageContentType(bytes: Uint8Array, declaredType: string | null): 
   // signature, while still rejecting auth walls / error pages.
   const declared = declaredType?.split(';')[0]?.trim().toLowerCase() || ''
   if (declared.startsWith('image/') && declared !== 'image/svg+xml') {
-    const head = decodeTextPrefix(b, 512).replace(/^﻿/, '').trim().toLowerCase()
+    const head = decodeTextPrefix(b, 512).replace(/^\uFEFF/, '').trim().toLowerCase()
     const looksLikeHtml =
       head.startsWith('<!doctype html') || head.startsWith('<html') || head.startsWith('<head')
     if (!looksLikeHtml) return declared
@@ -121,6 +124,9 @@ export type IconFetchOutcome =
   | { ok: true; icon: FetchedIcon }
   | { ok: false; failure: IconFetchFailure }
 
+// 重定向最多跟随的跳数；超出按永久失败处理（重定向环 / 刻意拖延）。
+export const MAX_ICON_REDIRECTS = MAX_SAFE_REDIRECTS
+
 // 纯函数，便于单测：null 表示网络错误或超时。
 export function classifyIconFailure(status: number | null): IconFetchFailure {
   return status === 404 || status === 410 ? 'missing' : 'transient'
@@ -133,28 +139,37 @@ export function classifyIconFailure(status: number | null): IconFetchFailure {
  * 尝试同样失败，真正恢复要等到窗口过去；调用方按 `failure` 决定能不能缓存兜底图，
  * 下一个请求（下一次页面加载、下一次渲染）拿到的就是真图标。
  */
-export async function fetchIcon(iconUrl: string, timeoutMs = CACHE_TIMEOUT_MS): Promise<IconFetchOutcome> {
+export async function fetchIcon(iconUrl: string, timeoutMs = CACHE_TIMEOUT_MS, maxBytes = MAX_ICON_SIZE): Promise<IconFetchOutcome> {
+  // 出网目标过滤（SSRF）：入口地址与每一跳重定向都经 fetchFollowingSafeRedirects 过滤，
+  // 与 fetch-site-meta / fetch-favicon 同一口径。被拒绝的地址按「不存在」处理（永久失败）。
+  if (!parseTargetUrl(iconUrl)) return { ok: false, failure: 'missing' }
+
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
 
   try {
-    const response = await fetch(iconUrl, {
-      signal: controller.signal,
-      redirect: 'follow',
-      headers: {
-        Accept: ICON_ACCEPT,
-        'User-Agent': 'Mozilla/5.0 (compatible; CF-Navs/1.0)',
-      },
-    })
+    let response: Response
+    try {
+      ({ response } = await fetchFollowingSafeRedirects(iconUrl, {
+        signal: controller.signal,
+        headers: {
+          Accept: ICON_ACCEPT,
+          'User-Agent': 'Mozilla/5.0 (compatible; CF-Navs/1.0)',
+        },
+      }, MAX_ICON_REDIRECTS))
+    } catch (error) {
+      if (error instanceof BlockedFetchTargetError) return { ok: false, failure: 'missing' }
+      throw error
+    }
 
     if (!response.ok) return { ok: false, failure: classifyIconFailure(response.status) }
 
-    const buffer = await response.arrayBuffer()
+    if (response.headers.get('X-Icon-Fallback') === '1') return { ok: false, failure: 'transient' }
+    const bytes = await readBoundedBody(response.body, maxBytes)
     // 空 body 更像被截断，值得让下一次请求重试；超过上限说明这个资源本身不可用。
-    if (buffer.byteLength === 0) return { ok: false, failure: 'transient' }
-    if (buffer.byteLength > MAX_ICON_SIZE) return { ok: false, failure: 'missing' }
+    if (bytes?.byteLength === 0) return { ok: false, failure: 'transient' }
+    if (!bytes) return { ok: false, failure: 'missing' }
 
-    const bytes = new Uint8Array(buffer)
     const contentType = sniffImageContentType(bytes, response.headers.get('content-type'))
     // Reject payloads that are not real images (e.g. an auth-gated host that
     // returns an HTML login page instead of the icon). Caching those would
@@ -191,23 +206,8 @@ export function iconBytesToDataUri(icon: FetchedIcon): string {
 }
 
 export function dataUriToResponse(dataUri: string, cacheControl: string): Response | null {
-  const match = dataUri.match(/^data:([^;,]+);base64,(.+)$/)
-  if (!match) return null
-
-  try {
-    const mime = match[1] || 'image/png'
-    const bytes = Uint8Array.from(atob(match[2]), (char) => char.charCodeAt(0))
-    return new Response(bytes, {
-      status: 200,
-      headers: {
-        'Content-Type': mime,
-        'Content-Length': String(bytes.byteLength),
-        'Cache-Control': cacheControl,
-      },
-    })
-  } catch {
-    return null
-  }
+  const decoded = decodeIconDataUri(dataUri)
+  return decoded ? iconBytesToResponse({ bytes: decoded.bytes, contentType: decoded.mime }, cacheControl) : null
 }
 
 function normalizeIconifyPair(prefix: string, name: string): boolean {

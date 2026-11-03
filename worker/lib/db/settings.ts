@@ -1,3 +1,5 @@
+import type { IconDataMetadata } from '../../../shared/iconDescriptor'
+import { iconMetadataFromRows } from '../iconMetadata'
 // settings 聚合读取、单键读写、data_version 维护与部分更新
 
 import { type Settings, type SiteConfig } from '../../../shared/types'
@@ -7,7 +9,8 @@ import {
   settingsFromRawMap,
 } from '../settingsData'
 import { SETTINGS_LIST_SQL, DATA_VERSION_KEY } from './sql'
-import { createDataVersion, buildSettingsPatchParams } from './settingsHelpers'
+import { buildSettingsPatchParams } from './settingsHelpers'
+import { Mutation, commitMutation, type MutationReceipt } from './mutation'
 
 async function readRawSettings(db: D1Database): Promise<Map<string, unknown>> {
   const { results } = await db.prepare(SETTINGS_LIST_SQL).all<{ key: string; value: string | null }>()
@@ -31,13 +34,14 @@ export async function getSiteConfig(db: D1Database): Promise<SiteConfig> {
 // getDataVersion，两条串行的 D1 往返读的都是 settings 表。合并成一条。
 export async function getSiteConfigWithDataVersion(
   db: D1Database,
-): Promise<{ config: SiteConfig; version: string }> {
+): Promise<{ config: SiteConfig; version: string } & IconDataMetadata> {
   const { results } = await db
-    .prepare(`SELECT key, value FROM settings WHERE key IN ('site_title', 'public_mode', '${DATA_VERSION_KEY}')`)
+    .prepare(`SELECT key, value FROM settings WHERE key IN ('site_title', 'public_mode', '${DATA_VERSION_KEY}', 'icon_dataset_epoch', 'icon_epoch')`)
     .all<{ key: string; value: string | null }>()
 
   const rows = results ?? []
   return {
+    ...iconMetadataFromRows(rows),
     config: siteConfigFromRows(rows),
     version: dataVersionFromValue(rows.find((row) => row.key === DATA_VERSION_KEY)?.value ?? null),
   }
@@ -98,22 +102,26 @@ export async function getSettingValues<T = unknown>(
 
 // 写入任意单个内部 key（value 会被 JSON.stringify）
 export async function setSettingValue(db: D1Database, key: string, value: unknown): Promise<void> {
+  await setSettingValues(db, [[key, value]])
+}
+
+/**
+ * 一条多行 upsert 写入多个内部 key：单条语句天然原子，且只有一次 D1 往返。
+ * 用于管理员凭据引导（多键同时生效）和「改密码 + 轮换 JWT 密钥」这类必须同生共死的写入。
+ */
+export async function setSettingValues(
+  db: D1Database,
+  entries: ReadonlyArray<readonly [key: string, value: unknown]>,
+): Promise<void> {
+  if (entries.length === 0) return
   await db
-    .prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
-    .bind(key, JSON.stringify(value))
+    .prepare(`INSERT INTO settings (key, value) VALUES ${entries.map(() => '(?, ?)').join(', ')}
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
+    .bind(...entries.flatMap(([key, value]) => [key, JSON.stringify(value)]))
     .run()
 }
 
-export async function getDataVersion(db: D1Database): Promise<string> {
-  const row = await db
-    .prepare('SELECT value FROM settings WHERE key = ?')
-    .bind(DATA_VERSION_KEY)
-    .first<{ value: string | null }>()
-
-  return dataVersionFromValue(row?.value ?? null)
-}
-
-function dataVersionFromValue(raw: string | null): string {
+export function dataVersionFromValue(raw: string | null): string {
   if (!raw) return '0'
 
   try {
@@ -127,12 +135,6 @@ function dataVersionFromValue(raw: string | null): string {
   return '0'
 }
 
-export async function touchDataVersion(db: D1Database): Promise<string> {
-  const version = createDataVersion()
-  await setSettingValue(db, DATA_VERSION_KEY, version)
-  return version
-}
-
 export function settingsPatchStatement(db: D1Database, patch: Partial<Settings>): D1PreparedStatement | null {
   const built = buildSettingsPatchParams(patch)
   if (!built) return null
@@ -143,15 +145,36 @@ export function settingsPatchStatement(db: D1Database, patch: Partial<Settings>)
     .bind(...built.params)
 }
 
-// 部分更新 Settings（只更新传入的 key），batch 提交后返回全量
+export interface SettingsWriteOptions {
+  /** 同一 batch 里幂等创建「浏览器新增收藏」根分类（开启浏览器同步时）。 */
+  extraStatements?: D1PreparedStatement[]
+  receipt?: MutationReceipt
+}
+
+// 部分更新 Settings（只更新传入的 key）：写入、data_version 提升与回读全量放在同一个 batch。
 export async function updateSettings(
   db: D1Database,
   patch: Partial<Settings>,
+  options: SettingsWriteOptions = {},
 ): Promise<Settings> {
-  await settingsPatchStatement(db, patch)?.run()
-  return await getSettings(db)
+  const mutation = new Mutation(db).add(...writeStatements(db, patch, options))
+  if (!mutation.hasWrites) return await getSettings(db)
+  const results = await mutation.bump().add(db.prepare(SETTINGS_LIST_SQL)).commit(options.receipt)
+  const rows = (results.at(-1)?.results ?? []) as Array<{ key: string; value: string | null }>
+  return settingsFromRawMap(readRawSettingsRows(rows))
 }
 
-export async function writeSettingsPatch(db: D1Database, patch: Partial<Settings>): Promise<void> {
-  await settingsPatchStatement(db, patch)?.run()
+export async function writeSettingsPatch(
+  db: D1Database,
+  patch: Partial<Settings>,
+  options: SettingsWriteOptions = {},
+): Promise<void> {
+  const statements = writeStatements(db, patch, options)
+  if (statements.length === 0) return
+  await commitMutation(db, statements, options.receipt)
+}
+
+function writeStatements(db: D1Database, patch: Partial<Settings>, options: SettingsWriteOptions): D1PreparedStatement[] {
+  const statement = settingsPatchStatement(db, patch)
+  return [...(options.extraStatements ?? []), ...(statement ? [statement] : [])]
 }

@@ -1,3 +1,6 @@
+import type { IconDataMetadata } from '../../../shared/iconDescriptor'
+import { iconMetadataFromRows } from '../iconMetadata'
+import { dataVersionFromValue } from './settings'
 // 跨表聚合读取：公开首页数据源与后台聚合数据
 
 import {
@@ -7,7 +10,6 @@ import {
   type PublicBookmark,
   type PublicCategory,
   type Settings,
-  type SiteConfig,
 } from '../../../shared/types'
 import {
   BOOKMARK_AGGREGATE_LIST_SQL,
@@ -16,21 +18,20 @@ import {
   PUBLIC_BOOKMARK_LIST_SQL,
   PUBLIC_CATEGORY_LIST_SQL,
   PUBLIC_DATA_SETTINGS_LIST_SQL,
-  PUBLIC_DATA_SETTINGS_WITHOUT_SITE_CONFIG_LIST_SQL,
   SETTINGS_LIST_SQL,
 } from './sql'
 import { withSchemaRetry } from './schema'
 import { settingsFromRows } from '../settingsData'
 
-export async function getPublicDataSource(db: D1Database, siteConfig?: SiteConfig, includePrivate = false): Promise<{
+export async function getPublicDataSource(db: D1Database, includePrivate = false): Promise<{
   categories: PublicCategory[]
   bookmarks: PublicBookmark[]
   settings: Settings
-}> {
+  version: string
+} & IconDataMetadata> {
   return await withSchemaRetry(db, async () => {
-    const settingsSql = siteConfig
-      ? PUBLIC_DATA_SETTINGS_WITHOUT_SITE_CONFIG_LIST_SQL
-      : PUBLIC_DATA_SETTINGS_LIST_SQL
+    // Visibility and its version must come from the same batch, not an earlier config cache.
+    const settingsSql = PUBLIC_DATA_SETTINGS_LIST_SQL
     const [settingsResult, categoriesResult, bookmarksResult] = await db.batch([
       db.prepare(settingsSql),
       db.prepare(PUBLIC_CATEGORY_LIST_SQL),
@@ -43,10 +44,13 @@ export async function getPublicDataSource(db: D1Database, siteConfig?: SiteConfi
       : getPublicCategoryIds(allCategories)
     const allBookmarks = (bookmarksResult.results ?? []) as PublicBookmark[]
 
+    const metadataRows = (settingsResult.results ?? []) as Array<{ key: string; value: string | null }>
     return {
+      ...iconMetadataFromRows(metadataRows),
+      version: dataVersionFromValue(metadataRows.find(row => row.key === 'data_version')?.value ?? null),
       categories: visibleCategoryIds ? allCategories.filter((category) => visibleCategoryIds.has(category.id)) : allCategories,
       bookmarks: visibleCategoryIds ? allBookmarks.filter((bookmark) => visibleCategoryIds.has(bookmark.category_id)) : allBookmarks,
-      settings: settingsFromRows((settingsResult.results ?? []) as Array<{ key: string; value: string | null }>, siteConfig),
+      settings: settingsFromRows((settingsResult.results ?? []) as Array<{ key: string; value: string | null }>),
     }
   })
 }
@@ -58,6 +62,7 @@ export function getPublicCategoryIds(categories: PublicCategory[]): Set<number> 
   for (const category of categories) {
     let current: PublicCategory | undefined = category
     let hidden = false
+    let reachedRoot = false
     const visited = new Set<number>()
     while (current) {
       if (visited.has(current.id)) {
@@ -69,14 +74,18 @@ export function getPublicCategoryIds(categories: PublicCategory[]): Set<number> 
         hidden = true
         break
       }
-      current = current.parent_id == null ? undefined : byId.get(current.parent_id)
+      if (current.parent_id == null) {
+        reachedRoot = true
+        break
+      }
+      current = byId.get(current.parent_id)
     }
+    if (!reachedRoot) hidden = true
     if (!hidden) visible.add(category.id)
   }
 
   return visible
 }
-
 /**
  * 匿名图标端点的可见性判定。口径必须与 `getPublicCategoryIds` 保持一致：
  * 私密书签自身不可见；公开书签只要挂在私密分类（或私密分类的后代）下同样不可见。
@@ -98,7 +107,10 @@ export async function getAdminData(db: D1Database): Promise<AdminData> {
       db.prepare(SETTINGS_LIST_SQL),
     ])
 
+    const metadataRows = (settingsResult.results ?? []) as Array<{ key: string; value: string | null }>
     return {
+      ...iconMetadataFromRows(metadataRows),
+      version: dataVersionFromValue(metadataRows.find(row => row.key === 'data_version')?.value ?? null),
       categories: (categoriesResult.results ?? []) as Category[],
       bookmarks: (bookmarksResult.results ?? []) as Bookmark[],
       settings: settingsFromRows((settingsResult.results ?? []) as Array<{ key: string; value: string | null }>),

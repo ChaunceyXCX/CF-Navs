@@ -1,6 +1,31 @@
 const CACHE_ORIGIN = 'https://cf-navs.local'
 export const DEFAULT_MAX_SNAPSHOT_BYTES = 1_500_000
 
+// Envelope version of every persisted data snapshot. Bump it when the payload
+// shape changes incompatibly: readers then treat older or newer envelopes as a
+// cache miss instead of handing a foreign shape to `parse`. Payloads written
+// before the field existed are the version-1 shape and stay readable.
+export const SNAPSHOT_SCHEMA_VERSION = 1
+const SNAPSHOT_SCHEMA_FIELD = 'snapshot_schema_version'
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+export function hasSupportedSnapshotSchema(value: unknown): boolean {
+  if (!isPlainObject(value)) return false
+  const version = value[SNAPSHOT_SCHEMA_FIELD]
+  return version === undefined || version === SNAPSHOT_SCHEMA_VERSION
+}
+
+function parseSnapshot<T>(config: SnapshotStorageConfig<T>, value: unknown): T | null {
+  return hasSupportedSnapshotSchema(value) ? config.parse(value) : null
+}
+
+function stampSnapshot(value: unknown): unknown {
+  return isPlainObject(value) ? { ...value, [SNAPSHOT_SCHEMA_FIELD]: SNAPSHOT_SCHEMA_VERSION } : value
+}
+
 export type SnapshotStorageConfig<T> = {
   cacheName: string
   cachePathPrefix: string
@@ -46,13 +71,13 @@ function isCacheRequest(request: Request, cachePathPrefix: string): boolean {
   }
 }
 
-export async function pruneOtherSnapshots<T>(config: SnapshotStorageConfig<T>, key: string): Promise<void> {
+export async function pruneOtherSnapshots<T>(config: SnapshotStorageConfig<T>, key: string, isCurrent: () => boolean = () => true): Promise<void> {
   if (canUseLocalStorage()) {
     const currentKey = localStorageKey(config.storagePrefix, key)
     try {
       for (let index = localStorage.length - 1; index >= 0; index -= 1) {
         const candidate = localStorage.key(index)
-        if (candidate?.startsWith(config.storagePrefix) && candidate !== currentKey) localStorage.removeItem(candidate)
+        if (isCurrent() && candidate?.startsWith(config.storagePrefix) && candidate !== currentKey) localStorage.removeItem(candidate)
       }
     } catch {
       // Best-effort cleanup.
@@ -65,7 +90,7 @@ export async function pruneOtherSnapshots<T>(config: SnapshotStorageConfig<T>, k
       const currentUrl = cacheRequest(config.cachePathPrefix, key).url
       const requests = await cache.keys()
       await Promise.all(requests.map((request) => (
-        request.url !== currentUrl && isCacheRequest(request, config.cachePathPrefix)
+        isCurrent() && request.url !== currentUrl && isCacheRequest(request, config.cachePathPrefix)
           ? cache.delete(request)
           : Promise.resolve(false)
       )))
@@ -75,12 +100,25 @@ export async function pruneOtherSnapshots<T>(config: SnapshotStorageConfig<T>, k
   }
 }
 
+// A late write owns one scope, not every snapshot in this browser profile.
+export async function removeSnapshot<T>(config: SnapshotStorageConfig<T>, key: string): Promise<void> {
+  if (canUseLocalStorage()) {
+    try { localStorage.removeItem(localStorageKey(config.storagePrefix, key)) } catch { /* Best-effort cleanup. */ }
+  }
+  if (canUseCacheStorage()) {
+    try {
+      const cache = await caches.open(config.cacheName)
+      await cache.delete(cacheRequest(config.cachePathPrefix, key))
+    } catch { /* Best-effort cleanup. */ }
+  }
+}
+
 export async function readSnapshot<T>(config: SnapshotStorageConfig<T>, key: string): Promise<T | null> {
   if (canUseLocalStorage()) {
     try {
       const raw = localStorage.getItem(localStorageKey(config.storagePrefix, key))
       if (raw) {
-        const parsed = config.parse(JSON.parse(raw))
+        const parsed = parseSnapshot(config, JSON.parse(raw))
         if (parsed) return parsed
       }
     } catch {
@@ -92,14 +130,14 @@ export async function readSnapshot<T>(config: SnapshotStorageConfig<T>, key: str
   try {
     const cache = await caches.open(config.cacheName)
     const cached = await cache.match(cacheRequest(config.cachePathPrefix, key))
-    return cached ? config.parse(await cached.json()) : null
+    return cached ? parseSnapshot(config, await cached.json()) : null
   } catch {
     return null
   }
 }
 
 export async function writeSnapshot<T>(config: SnapshotStorageConfig<T>, key: string, value: unknown): Promise<void> {
-  const serialized = JSON.stringify(value)
+  const serialized = JSON.stringify(stampSnapshot(value))
   if (serialized.length > (config.maxBytes ?? DEFAULT_MAX_SNAPSHOT_BYTES)) {
     await clearSnapshots(config)
     return
@@ -130,15 +168,15 @@ export async function writeSnapshot<T>(config: SnapshotStorageConfig<T>, key: st
   }
 }
 
-export async function clearSnapshots<T>(config: SnapshotStorageConfig<T>): Promise<void> {
-  if (canUseCacheStorage()) {
+export async function clearSnapshots<T>(config: SnapshotStorageConfig<T>, isCurrent: () => boolean = () => true): Promise<void> {
+  if (isCurrent() && canUseCacheStorage()) {
     try { await caches.delete(config.cacheName) } catch { /* Best-effort cleanup. */ }
   }
   if (canUseLocalStorage()) {
     try {
       for (let index = localStorage.length - 1; index >= 0; index -= 1) {
         const key = localStorage.key(index)
-        if (key?.startsWith(config.storagePrefix)) localStorage.removeItem(key)
+        if (isCurrent() && key?.startsWith(config.storagePrefix)) localStorage.removeItem(key)
       }
     } catch {
       // Best-effort cleanup.

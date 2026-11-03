@@ -29,7 +29,7 @@ function cacheKey(input: Request | string): string {
 function loadServiceWorker(
   networkResponse: (request: Request) => Response | Promise<Response>,
   initialEntries: Array<[string, Response]> = [],
-  cacheNames: string[] = ['cf-navs-v16'],
+  cacheNames: string[] = ['cf-navs-v17'],
 ) {
   const entries = new Map(initialEntries.map(([url, response]) => [cacheKey(url), response.clone()]))
   const puts: CacheRecord[] = []
@@ -61,7 +61,7 @@ function loadServiceWorker(
 
   const context = createContext({
     self: {
-      addEventListener(type: string, listener: (event: FetchEventLike | MessageEventLike) => void) {
+      addEventListener(type: string, listener: (event: FetchEventLike | MessageEventLike | LifecycleEventLike) => void) {
         listeners[type] = listener
       },
       location: new URL(`${ORIGIN}/sw.js`),
@@ -104,7 +104,7 @@ function loadServiceWorker(
     async dispatchFetch(url: string, navigate = false) {
       const request = new Request(url)
       if (navigate) Object.defineProperty(request, 'mode', { value: 'navigate' })
-      let response: Response | Promise<Response> | null = null
+      let response = null as Response | Promise<Response> | null
       const pending: Promise<unknown>[] = []
       listeners.fetch?.({
         request,
@@ -216,11 +216,11 @@ describe('service worker build-asset caching', () => {
     const sw = loadServiceWorker(
       () => new Response('ok'),
       [],
-      ['cf-navs-v15', 'cf-navs-v16', 'cf-navs-veabae17f0b0e'],
+      ['cf-navs-v15', 'cf-navs-v16', 'cf-navs-v17', 'cf-navs-veabae17f0b0e'],
     )
 
     await sw.dispatchActivate()
 
-    expect(sw.deletedCaches).toEqual(['cf-navs-v15', 'cf-navs-veabae17f0b0e'])
+    expect(sw.deletedCaches).toEqual(['cf-navs-v15', 'cf-navs-v16', 'cf-navs-veabae17f0b0e'])
   })
 })

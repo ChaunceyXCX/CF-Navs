@@ -1,14 +1,23 @@
+<svelte:options runes />
+
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte'
+  import { createLocalIconView, emptyLocalIcon } from '../lib/localIconView'
+  import { applyIconDisplayOverride, bookmarkIconDisplay } from '../lib/iconDisplayStore'
+  // 本地图标视图每次发布新对象；不做深层代理。
+  let localImage = $state.raw(emptyLocalIcon)
+  const localView = createLocalIconView(value => { localImage = value })
+  import { onDestroy, onMount, untrack } from 'svelte'
+  import { on } from 'svelte/events'
+  import type { Attachment } from 'svelte/attachments'
   import type { CardStyle, DescriptionDisplayMode, PublicBookmark } from '../../shared/types'
   import type { CategoryTreeOption } from '../lib/categorySelect'
   import BookmarkCardCompact from './BookmarkCardCompact.svelte'
-  import { publicStore } from '../lib/stores'
-  import { api } from '../lib/api'
+  import { recordBookmarkClick } from '../lib/dataService'
   import BookmarkCardInfo from './BookmarkCardInfo.svelte'
-  import BookmarkContextMenu from './BookmarkContextMenu.svelte'
+  import { getLoadedBookmarkContextMenu, loadBookmarkContextMenu, preloadBookmarkContextMenuWhenIdle } from '../lib/lazyBookmarkContextMenu'
   import BookmarkLinkModal from './BookmarkLinkModal.svelte'
   import { getInfoCardTrackWidth, getIconCardTrackWidth } from '../lib/bookmarkCardLayout'
+  import { createIconRetry } from '../lib/iconRetry'
   import { buildIconStyle } from '../lib/bookmarkIconDisplay'
   import {
     BOOKMARK_CONTEXT_MENU_OPEN_EVENT,
@@ -24,7 +33,7 @@
   } from '../lib/bookmarkCardIconState'
   import { observeIconVisibility } from '../lib/iconVisibility'
   import {
-    fetchAndCacheBookmarkIconUrl,
+    fetchBookmarkIcon,
     fetchCachedBookmarkIconUrl,
     readCachedBookmarkIconDataUri,
     revokeLocalIconUrl,
@@ -32,33 +41,71 @@
 
   type AsyncVoid<T = void> = T | Promise<T>
 
-  export let bookmark: PublicBookmark
-  export let style: CardStyle = 'info'
-  export let iconSize: number = 100
-  export let showDescription: boolean = true
-  export let descriptionMode: DescriptionDisplayMode = showDescription ? 'always' : 'hidden'
-  export let showIconTitle: boolean = true
-  export let width: number = 160
-  export let height: number = 0
-  export let canEdit = false
-  export let sortMode = false
-  export let preview = false
-  export let themeOverride: 'light' | 'dark' | null = null
-  export let onEdit: ((bookmark: PublicBookmark) => AsyncVoid) | undefined = undefined
-  export let moveCategories: CategoryTreeOption[] = []
-  export let onMoveBookmark: ((bookmark: PublicBookmark, categoryId: number) => AsyncVoid) | undefined = undefined
+  interface Props {
+    bookmark: PublicBookmark
+    style?: CardStyle
+    iconSize?: number
+    showDescription?: boolean
+    descriptionMode?: DescriptionDisplayMode
+    showIconTitle?: boolean
+    width?: number
+    height?: number
+    canEdit?: boolean
+    sortMode?: boolean
+    preview?: boolean
+    themeOverride?: 'light' | 'dark' | null
+    onEdit?: (bookmark: PublicBookmark) => AsyncVoid
+    moveCategories?: CategoryTreeOption[]
+    onMoveBookmark?: (bookmark: PublicBookmark, categoryId: number) => AsyncVoid
+    /**
+     * 私密书签（或位于私密分类树下的书签）的短期图标授权 key。公开书签必须传空串：
+     * 带 key 会让 `/api/icon/:id` 返回 `private, no-store`，白丢共享缓存。
+     */
+    iconAccessKey?: string
+    reuseCompletedObject?: boolean
+    /** REQ-17 聚合区：卡片来源二级分类名；详情卡显示可见 chip，极简卡经 tooltip/ARIA 承载；空串不显示。 */
+    sourceCategoryTitle?: string
+  }
 
-  let cachedIconFailed = false
-  let fallbackFailed = false
-  let localCachedIconUrl = ''
-  let syncLocalCachedIconUrl = ''
-  let localCachePending = false
+  let {
+    bookmark,
+    style = 'info',
+    iconSize = 100,
+    showDescription = true,
+    descriptionMode = showDescription ? 'always' : 'hidden',
+    showIconTitle = true,
+    width = 160,
+    height = 0,
+    canEdit = false,
+    sortMode = false,
+    preview = false,
+    themeOverride = null,
+    onEdit = undefined,
+    moveCategories = [],
+    onMoveBookmark = undefined,
+    iconAccessKey = '',
+    reuseCompletedObject = false,
+    sourceCategoryTitle = '',
+  }: Props = $props()
+
+  let cachedIconFailed = $state(false)
+  let fallbackFailed = $state(false)
+  let localCachedIconUrl = $state('')
+  // 只在处理器与加载函数里读写，不进模板。
+  let localIconReady = false
+  const iconRetry = createIconRetry(() => {
+    if (iconBaseState.proxiedHttpIconUrl) {
+      void loadLocalCachedIcon(iconBaseState.localCacheKey, false, iconBaseState.proxiedHttpIconUrl)
+    }
+  })
+  let localCachePending = $state(false)
   const localCacheRequest = { current: 0 }
-  let iconInView = false
-  let shellElement: HTMLDivElement | null = null
+  let iconInView = $state(false)
+  let shellElement: HTMLDivElement | null = $state(null)
   let stopIconVisibilityObserver: (() => void) | null = null
-  let contextMenuOpen = false
-  let modalOpen = false
+  let contextMenuOpen = $state(false)
+  let modalOpen = $state(false)
+  // 以下只在副作用 / 处理器里比较或读写，不进模板。
   let iconStateKey = ''
   let windowListenersAttached = false
   let contextMenuInstanceId = Math.random().toString(36).slice(2)
@@ -69,68 +116,106 @@
   let touchStartY = 0
   const LONG_PRESS_MS = 500
 
-  $: openInNewTab = bookmark.open_method === 1
-  $: iconBaseState = deriveBookmarkCardIconBase({
-    bookmark,
+  const openInNewTab = $derived(bookmark.open_method === 1)
+  // 菜单组件按需加载：能打开菜单的卡片在空闲时预取，打开时若尚未就绪则等待加载完成再渲染。
+  let ContextMenuComponent = $state.raw(getLoadedBookmarkContextMenu())
+  const menuAvailable = $derived(!preview && canOpenBookmarkContextMenu({ sortMode, canEdit, hasEditHandler: Boolean(onEdit), hasMoveHandler: Boolean(onMoveBookmark) }))
+  $effect.pre(() => {
+    if (menuAvailable && !ContextMenuComponent) untrack(preloadBookmarkContextMenuWhenIdle)
+  })
+  $effect.pre(() => {
+    if (contextMenuOpen && !ContextMenuComponent) untrack(() => void ensureContextMenuComponent())
+  })
+  async function ensureContextMenuComponent(): Promise<void> {
+    try {
+      ContextMenuComponent = await loadBookmarkContextMenu()
+    } catch (error) {
+      console.warn('[CF-Navs] failed to load bookmark context menu', error)
+      contextMenuOpen = false
+    }
+  }
+  // 图标显示状态来自独立的按 id 订阅表：图标更新只重算这张卡片，不触发首页结构数据重建。
+  // watch 对同一 id 返回同一个 store，`$iconDisplayOverride` 不会反复重订阅。
+  const iconDisplayOverride = $derived(bookmarkIconDisplay.watch(bookmark.id))
+  const iconBookmark = $derived(applyIconDisplayOverride(bookmark, $iconDisplayOverride))
+  // 原拓扑顺序：iconBaseState 先于依赖它的 localView.set 计算。
+  const iconBaseState = $derived(deriveBookmarkCardIconBase({
+    bookmark: iconBookmark,
     iconInView,
     shouldWaitForLocalIconCache: true,
+    iconAccessKey,
+  }))
+  // 与原 `$:` 一样先于 DOM 更新、在状态键判断之前执行；set 内部按签名去重，只在入参依赖变化时调用。
+  $effect.pre(() => {
+    const input = { ...iconBookmark, visible: iconInView, preview, online_url: iconBaseState.proxiedHttpIconUrl }
+    untrack(() => localView.set(input))
   })
-  $: iconText = iconBaseState.iconText
-  $: nextIconStateKey = iconBaseState.nextIconStateKey
-  $: localCacheKey = iconBaseState.localCacheKey
-  $: shouldReadLocalIconCache = iconBaseState.shouldReadLocalIconCache
-  $: shouldWaitForLocalIconCache = iconBaseState.shouldWaitForLocalIconCache
-  $: syncLocalCachedIconUrl = iconInView && !iconBaseState.hasEmbeddedIcon
+  const iconText = $derived(iconBaseState.iconText)
+  const nextIconStateKey = $derived(iconBaseState.nextIconStateKey + ':' + localImage.active)
+  const localCacheKey = $derived(iconBaseState.localCacheKey)
+  const syncLocalCachedIconUrl = $derived(iconInView && !iconBaseState.hasEmbeddedIcon
     ? readCachedBookmarkIconDataUri(localCacheKey) ?? ''
-    : ''
-  $: iconUrlState = deriveBookmarkCardIconUrl({
-    bookmark,
+    : '')
+  // 状态键变化时复位并重新加载；原语句的语法依赖是 nextIconStateKey 与 iconBaseState / localImage
+  // （三者都已含在键里或随键变化），被调用函数里读写的 localCachedIconUrl 等不作为依赖。
+  $effect.pre(() => {
+    const key = nextIconStateKey
+    const baseState = iconBaseState
+    const localActive = localImage.active
+    untrack(() => {
+      if (key === iconStateKey) return
+      iconStateKey = key
+      cachedIconFailed = false
+      fallbackFailed = false
+      localIconReady = false
+      iconRetry.reset()
+      resetLocalCachedIconUrl()
+      if (baseState.shouldReadLocalIconCache && !localActive) {
+        void loadLocalCachedIcon(
+          baseState.localCacheKey,
+          baseState.shouldWaitForLocalIconCache,
+          baseState.shouldUseIconProxy ? baseState.proxiedHttpIconUrl : '',
+        )
+      } else {
+        localCacheRequest.current += 1
+        localCachePending = false
+      }
+    })
+  })
+  const iconUrlState = $derived(deriveBookmarkCardIconUrl({
+    bookmark: iconBookmark,
     baseState: iconBaseState,
     cachedIconFailed,
     fallbackFailed,
     syncLocalCachedIconUrl,
     localCachedIconUrl,
     localCachePending,
-  })
-  $: iconUrl = iconUrlState.iconUrl
-  $: hasRenderableIcon = iconUrlState.hasRenderableIcon
-  $: infoCardHeight = height > 0 ? height : 70
-  $: safeInfoCardWidth = getInfoCardTrackWidth(width)
-  $: infoIconInset = infoCardHeight <= 56 ? 6 : 8
-  $: infoIconSize = Math.max(32, Math.min(infoCardHeight - infoIconInset * 2, safeInfoCardWidth - infoIconInset * 2))
-  $: compactIconSize = Math.max(0, iconSize)
-  $: compactShellWidth = getIconCardTrackWidth(compactIconSize, showIconTitle)
-  $: iconBackgroundColor = bookmark.icon_background_color || ''
-  $: hasCustomIconBackground = Boolean(iconBackgroundColor)
-  $: infoIconStyle = buildIconStyle(infoIconSize, { customBackground: iconBackgroundColor })
-  $: compactIconStyle = buildIconStyle(compactIconSize, {
+  }))
+  const iconUrl = $derived(localImage.active ? localImage.url : iconUrlState.iconUrl)
+  const hasRenderableIcon = $derived(localImage.active ? Boolean(localImage.url) : iconUrlState.hasRenderableIcon)
+  const infoCardHeight = $derived(height > 0 ? height : 70)
+  const safeInfoCardWidth = $derived(getInfoCardTrackWidth(width))
+  const infoIconInset = $derived(infoCardHeight <= 56 ? 6 : 8)
+  const infoIconSize = $derived(Math.max(32, Math.min(infoCardHeight - infoIconInset * 2, safeInfoCardWidth - infoIconInset * 2)))
+  const compactIconSize = $derived(Math.max(0, iconSize))
+  const compactShellWidth = $derived(getIconCardTrackWidth(compactIconSize, showIconTitle))
+  const iconBackgroundColor = $derived(bookmark.icon_background_color || '')
+  const hasCustomIconBackground = $derived(Boolean(iconBackgroundColor))
+  const infoIconStyle = $derived(buildIconStyle(infoIconSize, { customBackground: iconBackgroundColor }))
+  const compactIconStyle = $derived(buildIconStyle(compactIconSize, {
     compact: true,
     customBackground: iconBackgroundColor,
-  })
-  $: tooltipText = bookmark.description ? `${bookmark.title}\n${bookmark.description}` : bookmark.title
-  $: cardShellStyle =
+  }))
+  const tooltipText = $derived(bookmark.description ? `${bookmark.title}\n${bookmark.description}` : bookmark.title)
+  const cardShellStyle = $derived(
     style === 'info'
       ? `--card-configured-min-width: ${safeInfoCardWidth}px; ${height > 0 ? `height: ${height}px;` : ''}`
-      : `width: ${compactShellWidth}px;`
-  $: cardLinkStyle = height > 0 ? `height: ${height}px;` : ''
-  $: if (nextIconStateKey !== iconStateKey) {
-    iconStateKey = nextIconStateKey
-    cachedIconFailed = false
-    fallbackFailed = false
-    resetLocalCachedIconUrl()
-    if (shouldReadLocalIconCache) {
-      void loadLocalCachedIcon(
-        localCacheKey,
-        shouldWaitForLocalIconCache,
-        iconBaseState.shouldUseIconProxy ? iconBaseState.proxiedHttpIconUrl : '',
-      )
-    } else {
-      localCacheRequest.current += 1
-      localCachePending = false
-    }
-  }
-  $: syncWindowListeners(contextMenuOpen || modalOpen)
-
+      : `width: ${compactShellWidth}px;`)
+  const cardLinkStyle = $derived(height > 0 ? `height: ${height}px;` : '')
+  $effect.pre(() => {
+    const active = contextMenuOpen || modalOpen
+    untrack(() => syncWindowListeners(active))
+  })
   function resetLocalCachedIconUrl() {
     if (localCachedIconUrl) {
       revokeLocalIconUrl(localCachedIconUrl)
@@ -139,6 +224,7 @@
   }
 
   async function loadLocalCachedIcon(cacheKey: string, waitForLocalCache: boolean, remoteUrl: string) {
+    if (localImage.active) return
     if (waitForLocalCache) {
       localCachePending = true
     }
@@ -147,6 +233,7 @@
     if (result.stale) return
     const requestSequence = localCacheRequest.current
     if (result.url) {
+      localIconReady = true
       resetLocalCachedIconUrl()
       localCachedIconUrl = result.url
       localCachePending = false
@@ -154,30 +241,56 @@
     }
 
     if (remoteUrl) {
-      const cachedRemoteUrl = await fetchAndCacheBookmarkIconUrl(cacheKey, remoteUrl)
+      const remote = await fetchBookmarkIcon(cacheKey, remoteUrl, {
+        reuseCompletedObject: reuseCompletedObject || iconBaseState.hasProjectedImageIcon,
+      })
       if (requestSequence !== localCacheRequest.current) {
-        if (cachedRemoteUrl) revokeLocalIconUrl(cachedRemoteUrl)
+        if (remote.url) revokeLocalIconUrl(remote.url)
         return
       }
-      if (cachedRemoteUrl) {
+      localIconReady = remote.status === 'ready'
+      if (remote.url) {
         resetLocalCachedIconUrl()
-        localCachedIconUrl = cachedRemoteUrl
-        localCachePending = false
-        return
+        localCachedIconUrl = remote.url
+        cachedIconFailed = false
+        fallbackFailed = false
+      } else if (!localCachedIconUrl) {
+        cachedIconFailed = true
+        fallbackFailed = true
       }
+      if (remote.status === 'retryable') iconRetry.failed()
+      else if (remote.status === 'unavailable') iconRetry.reset()
     }
 
     localCachePending = false
   }
 
   function handleIconError() {
+    if (localImage.active) { localView.failed(); return }
     if (localCachedIconUrl) {
       resetLocalCachedIconUrl()
+      localIconReady = false
+      if (iconBaseState.proxiedHttpIconUrl) {
+        cachedIconFailed = true
+        fallbackFailed = true
+        iconRetry.failed()
+      }
+      return
+    }
+
+    // An uncached HTTP <img> never went through fetchBookmarkIcon. Its error must
+    // enter the same recovery path; otherwise only opening the editor can fetch
+    // the icon server-side and reset the failed card (Issue #28).
+    if (!iconBaseState.hasEmbeddedIcon && iconBaseState.proxiedHttpIconUrl) {
+      cachedIconFailed = true
+      fallbackFailed = true
+      iconRetry.failed()
       return
     }
 
     if (!cachedIconFailed && (iconBaseState.hasEmbeddedIcon || iconBaseState.shouldUseIconProxy)) {
       cachedIconFailed = true
+      if (iconBaseState.shouldUseIconProxy) iconRetry.failed()
       return
     }
 
@@ -185,6 +298,7 @@
   }
 
   function handleIconLoad() {
+    if (localIconReady) iconRetry.reset()
     localCachePending = false
     fallbackFailed = false
   }
@@ -308,9 +422,8 @@
       return
     }
 
-    // Register click both locally and on server
-    publicStore.incrementClick(bookmark.id)
-    void api.public.registerClick(bookmark.id)
+    // 本地乐观 +1 + 持久化本地快照 + 异步登记服务端（见 dataService.recordBookmarkClick）
+    recordBookmarkClick(bookmark.id)
 
     if (!shouldOpenBookmarkModal({ sortMode, openMethod: bookmark.open_method })) return
     event.preventDefault()
@@ -372,11 +485,28 @@
     }
   }
 
+  // 移动按钮：pointerdown / touchstart / click 都要在按钮节点上就地 stopPropagation，
+  // 挡住祖先（排序容器）的原生监听与窗口点击关闭；事件属性走根节点委托会晚于它们（同 8g BookmarkContextMenu）。
+  const attachMoveTriggerListeners: Attachment<HTMLButtonElement> = (node) => {
+    const stop = (event: Event) => event.stopPropagation()
+    const offs = [
+      on(node, 'pointerdown', stop),
+      on(node, 'touchstart', stop),
+      on(node, 'click', (event) => {
+        event.stopPropagation()
+        handleMobileMenuClick()
+      }),
+    ]
+    return () => offs.forEach((off) => off())
+  }
+
   onMount(() => {
     setupIconObserver()
   })
 
   onDestroy(() => {
+    localView.destroy()
+    iconRetry.dispose()
     localCacheRequest.current += 1
     disconnectIconObserver()
     resetLocalCachedIconUrl()
@@ -395,14 +525,15 @@
   style={cardShellStyle}
   bind:this={shellElement}
   class:context-menu-open={contextMenuOpen}
-  on:touchstart={handleTouchStart}
-  on:touchmove={handleTouchMove}
-  on:touchend={handleTouchEnd}
-  on:touchcancel={handleTouchEnd}
+  ontouchstart={handleTouchStart}
+  ontouchmove={handleTouchMove}
+  ontouchend={handleTouchEnd}
+  ontouchcancel={handleTouchEnd}
 >
   {#if style === 'info'}
     <BookmarkCardInfo
       {bookmark}
+      {sourceCategoryTitle}
       {openInNewTab}
       {sortMode}
       {cardLinkStyle}
@@ -426,7 +557,7 @@
       {bookmark}
       {openInNewTab}
       {sortMode}
-      {tooltipText}
+      tooltipText={sourceCategoryTitle ? tooltipText + '\n来自：' + sourceCategoryTitle : tooltipText}
       {compactIconSize}
       {compactIconStyle}
       {showIconTitle}
@@ -448,9 +579,7 @@
       class="bookmark-mobile-menu-trigger"
       aria-label={`移动「${bookmark.title}」`}
       title="移动"
-      on:pointerdown|stopPropagation
-      on:touchstart|stopPropagation
-      on:click|stopPropagation={handleMobileMenuClick}
+      {@attach attachMoveTriggerListeners}
     >
       <svg viewBox="0 0 24 24" aria-hidden="true" class="bookmark-mobile-menu-icon">
         <path d="M4 5h9M4 12h9M4 19h9M17 8l4 4-4 4M21 12h-8" />
@@ -458,8 +587,8 @@
     </button>
   {/if}
 
-  {#if contextMenuOpen}
-    <BookmarkContextMenu
+  {#if contextMenuOpen && ContextMenuComponent}
+    <ContextMenuComponent
       categories={moveCategories}
       currentCategoryId={bookmark.category_id}
       canMove={sortMode}
@@ -526,9 +655,13 @@
     }
   }
 
-  .bookmark-card-shell:hover,
-  .bookmark-card-shell:focus-within {
-    z-index: 1;
+  /* Empty-corner hover must not recomposite the glass. Only visible tooltips need promotion;
+     :where keeps the explicit context-menu-open layer above them. */
+  @media (hover: hover) {
+    .bookmark-card-shell:has(> :global(:where(.bookmark-tooltip-anchor:not(.sort-mode):hover))),
+    .bookmark-card-shell:has(> :global(:where(.bookmark-tooltip-anchor:not(.sort-mode):focus-visible))) {
+      z-index: 1;
+    }
   }
 
   .bookmark-card-shell.is-info {

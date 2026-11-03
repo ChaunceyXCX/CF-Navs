@@ -73,9 +73,27 @@ describe('installPublicDataFocusRefresh', () => {
 })
 
 describe('app wiring', () => {
-  it('App.svelte 安装焦点刷新并在卸载时清理', () => {
+  it('App.svelte 用会话感知刷新安装焦点刷新并在卸载时清理', () => {
     const source = readFileSync('src/App.svelte', 'utf8')
-    expect(source).toContain('installPublicDataFocusRefresh(() => refreshPublicData())')
+    // 接线断言：确认安装的是「事件触发时才解析会话」的 thunk，而不是安装时固定的刷新结果。
+    expect(source).toContain('installPublicDataFocusRefresh(() => refreshVisibleData())')
     expect(source).toContain('stopPublicDataFocusRefresh?.()')
+  })
+
+  it('刷新回调在防抖窗口结束时才解析会话状态，安装后改变登录态会影响本次刷新', () => {
+    vi.useFakeTimers()
+    let loggedIn = false
+    const chosen: string[] = []
+    const stop = installPublicDataFocusRefresh(async () => {
+      chosen.push(loggedIn ? 'logged-in' : 'anonymous')
+    })
+    loggedIn = true
+
+    window.dispatchEvent(new Event('focus'))
+    vi.advanceTimersByTime(300)
+
+    expect(chosen).toEqual(['logged-in'])
+
+    stop()
   })
 })
