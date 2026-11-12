@@ -1,6 +1,6 @@
 # 前端体验与自用效率优化（需求评估）
 
-> 状态：需求评估，尚未实现。本文不是待办清单，而是**把一份草案与真实源码核对之后**留下的决策记录。
+> 状态：历史需求评估。本文不是待办清单，而是**把一份草案与当时源码核对之后**留下的决策记录。“尚未实现”、技术环境和阶段顺序均属于下述历史基线；部分条款已有后续实现或裁定，当前状态看 [BACKLOG.md](../BACKLOG.md)，工程约束看 [CONTRIBUTING.md](../../CONTRIBUTING.md)。
 > 基线：`develop` @ `5a06fb3`（源码核对基线；不将本地文档与 README 的工作区状态作为实现变更）。
 > 来源：用户提交的《CF-Navs 前端体验与自用效率优化需求文档 (PRD)》草案，共 5 个模块 4 个阶段。
 > 核对方式：逐条读 `src/`、`shared/`、`worker/`、`docs/reference/`、`tests/`、`scripts/` 对应实现；源码结论带 `文件:行号` 证据，浏览器平台约束另附规范/MDN 链接。
@@ -183,7 +183,7 @@ Spotlight 是**独立**的即时跳转通道，不写 `Home.svelte` 的 `searchQ
 | 标题解析管线 | **已存在，但只由 `blur` 触发** | `BookmarkBaseFields.svelte:46` → `BookmarkEditModal.svelte:181-193` → `scheduleBookmarkTitleLookup` → `api.bookmarks.fetchSiteMeta`（`src/lib/api.ts:386-391`） |
 | 标题解析门禁 | 三重 | 非 `create` 跳过、标题已非空跳过、`lastUrl` 去重（`bookmarkTitleController.ts:71`/`:73`/`:78`）；填入截断 20 字（`:9`、`:103`） |
 | 图标解析 | **已免费具备** | `getIconCandidates(url, title)` 在 `form.url` 每次变化时响应式重算（`BookmarkEditModal.svelte:109-112`），实现是纯客户端 URL 拼接（`src/lib/icons.ts:319-347`），无网络 |
-| 服务端 favicon 接口 | **死代码** | `api.bookmarks.fetchFavicon`（`api.ts:381-385`）无调用者；`src/lib/bookmarkFaviconController.ts` 整个文件只被 `tests/unit/bookmarkFaviconController.test.ts:6` 引用；`docs/plans/PLATFORM_OPTIMIZATION_PLAN.md:558` 已记录该结论 |
+| 服务端 favicon 接口 | **死代码** | `api.bookmarks.fetchFavicon`（`api.ts:381-385`）无调用者；`src/lib/bookmarkFaviconController.ts` 整个文件只被 `tests/unit/bookmarkFaviconController.test.ts:6` 引用；`docs/plans/_archive/PLATFORM_OPTIMIZATION_PLAN.md:558` 已记录该结论 |
 | 分类默认值 | `categories[0]` | `App.svelte:735` 与 `BookmarkEditModal.svelte:86` 都回退 `categories[0]?.id`；`createBookmarkFormValue` 取 `value?.category_id ?? fallbackCategoryId`（`src/lib/bookmarkFormIcons.ts:32`） |
 | 分类选择器 | 无 `preselect` prop | `CategoryTreeSelect.svelte:10-11` 只有 `bind:value` + `items`；设 `draft.category_id` 即可预选，**无需改组件** |
 | 视口分类跟踪 | 有，但**顶部对齐** | `resolveActiveHomeRootId`（`src/lib/homeData.ts:192-213`）取"最后一个越过阈值的一级分类"，阈值 `navigationScrollOffset + 36`（`Home.svelte:299`）；`activeId` 与 `selectedCategoryIds` **未向 `App.svelte` 暴露** |

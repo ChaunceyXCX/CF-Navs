@@ -1,74 +1,111 @@
+<svelte:options runes />
+
 <script lang="ts">
-  import { onDestroy } from 'svelte'
+  import { onDestroy, untrack } from 'svelte'
+  import { createIconRetry } from '../lib/iconRetry'
+  import { createNativeImageWatchdog } from '../lib/nativeImageWatchdog'
   import type { CategoryIconValue } from '../lib/categoryIconDisplay'
   import {
     getCategoryIconFallbackText,
+    createCategoryRetryUrl,
     getCategoryImageIconUrl,
     getCategoryTextIcon,
     normalizeCategoryIcon,
   } from '../lib/categoryIconDisplay'
   import { withIconAccessKey } from '../lib/iconAccessKey'
+  import { createLocalIconView, emptyLocalIcon, type LocalIconState } from '../lib/localIconView'
 
-  export let category: CategoryIconValue
-  export let size: number | string = 36
-  export let className = ''
-  export let label = ''
-  export let iconAccessKey = ''
-  export let imageLoading: 'lazy' | 'eager' = 'lazy'
+  interface Props {
+    category: CategoryIconValue
+    size?: number | string
+    className?: string
+    label?: string
+    iconAccessKey?: string
+    imageLoading?: 'lazy' | 'eager'
+    preview?: boolean
+  }
 
-  // 分类代理对上游瞬时失败返回 503，避免把文字兜底伪装成成功图片。页面刷新时如果
-  // 恰好撞上上游限流，按退避持续重试，直到代理恢复；真正不存在的图标仍由 Worker
-  // 返回 200 兜底，不会进入这条循环。
-  const ICON_RETRY_DELAYS_MS = [1200, 4000, 10000, 30000]
+  let {
+    category,
+    size = 36,
+    className = '',
+    label = '',
+    iconAccessKey = '',
+    imageLoading = 'lazy',
+    preview = false,
+  }: Props = $props()
 
-  let baseUrl = ''
-  let retryUrl = ''
-  let failedUrl = ''
+  // 本地图标视图每次发布新对象；不做深层代理。
+  let localState: LocalIconState = $state.raw(emptyLocalIcon)
+  const localView = createLocalIconView(value => { localState = value })
+
+  // One native source owns its retry budget. Blob failures remain with the
+  // local-icon owner; native fallbacks also need recovery while it is active.
+  let sourceUrl = $state('')
+  let retryUrl = $state('')
+  let failedUrl = $state('')
+  // 只在重试回调里读写，不进模板。
   let retryAttempt = 0
-  let retryTimer: ReturnType<typeof setTimeout> | null = null
+  const nativeRetry = createIconRetry(() => {
+    retryAttempt += 1
+    retryUrl = createCategoryRetryUrl(sourceUrl, retryAttempt, performance.timeOrigin)
+  })
 
-  $: iconValue = normalizeCategoryIcon(category)
-  $: nextImageUrl = withIconAccessKey(getCategoryImageIconUrl(category), iconAccessKey)
-  // 图标或授权 key 变化（换图标、key 续签）时必须重新计数，否则上一条 URL 的失败态
-  // 会挡住新图标。
-  $: if (nextImageUrl !== baseUrl) {
-    baseUrl = nextImageUrl
-    retryUrl = ''
-    failedUrl = ''
-    retryAttempt = 0
-    clearRetryTimer()
-  }
-  $: imageUrl = retryUrl || baseUrl
-  $: textIcon = getCategoryTextIcon(category)
-
-  function clearRetryTimer(): void {
-    if (retryTimer) {
-      clearTimeout(retryTimer)
-      retryTimer = null
-    }
-  }
+  const iconValue = $derived(normalizeCategoryIcon(category) || category.icon_display === 'image')
+  const previewValue = $derived(normalizeCategoryIcon(category))
+  const previewSource = $derived(/^data:image\//i.test(previewValue) ? previewValue : /^https?:\/\//i.test(previewValue) ? previewValue : '')
+  const nextImageUrl = $derived(preview ? previewSource : withIconAccessKey(getCategoryImageIconUrl(category), iconAccessKey))
+  // 原 `$:` 经拓扑排序后在 nextImageUrl 之后、换源判断之前执行；set 内部按签名去重。
+  $effect.pre(() => {
+    const input = { object_type: 'category' as const, id: Number(category.id), icon: category.icon, icon_blob: category.icon_blob,
+      icon_revision: category.icon_revision, icon_write_epoch: category.icon_write_epoch, icon_display: category.icon_display,
+      visible: true, preview, online_url: nextImageUrl }
+    untrack(() => localView.set(input))
+  })
+  const selectedUrl = $derived(localState.active ? localState.url : nextImageUrl)
+  // 换源时复位重试与失败标记；只依赖 selectedUrl，先于 DOM 更新。
+  $effect.pre(() => {
+    const nextUrl = selectedUrl
+    untrack(() => {
+      if (nextUrl === sourceUrl) return
+      sourceUrl = nextUrl
+      retryUrl = ''
+      failedUrl = ''
+      retryAttempt = 0
+      nativeRetry.reset()
+    })
+  })
+  const nativeSource = $derived(!preview && sourceUrl.startsWith('/api/category-icon/'))
+  const isLocalBlob = $derived(localState.active && sourceUrl.startsWith('blob:'))
+  const imageUrl = $derived(nativeSource ? retryUrl || sourceUrl : sourceUrl)
+  const textIcon = $derived(getCategoryTextIcon(category))
 
   function handleImageError(): void {
-    // 只有同源代理地址值得重试：data URI 加载失败不是网络问题，重试也不会变好。
-    if (!baseUrl.startsWith('/api/')) {
-      failedUrl = retryUrl || baseUrl
-      return
-    }
-
-    clearRetryTimer()
-    failedUrl = retryUrl || baseUrl
-    const delay = ICON_RETRY_DELAYS_MS[Math.min(retryAttempt, ICON_RETRY_DELAYS_MS.length - 1)]
-    retryAttempt += 1
-    retryTimer = setTimeout(() => {
-      retryTimer = null
-      retryUrl = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}retry=${retryAttempt}`
-    }, delay)
+    if (isLocalBlob) { localView.failed(); return }
+    failedUrl = imageUrl
+    if (nativeSource) nativeRetry.failed()
   }
 
-  // 成功加载后不清空 retryUrl：那会把 src 换回失败过的 baseUrl，形成失败—重试的循环。
-  // retryUrl 只在下一次 baseUrl 变化时重置。
+  function handleImageLoad(): void {
+    if (nativeSource) nativeRetry.reset()
+    // Keep retryUrl: reverting to the stalled original would restart the failure.
+  }
 
-  onDestroy(clearRetryTimer)
+  function watchNativeImage(node: HTMLImageElement, url: string) {
+    let watchdog: ReturnType<typeof createNativeImageWatchdog> | null = null
+    const update = (nextUrl: string) => {
+      const enabled = !preview && nextUrl.startsWith('/api/category-icon/')
+      if (!enabled) { watchdog?.destroy(); watchdog = null; return }
+      watchdog ??= createNativeImageWatchdog(node, expiredUrl => {
+        if (imageUrl === expiredUrl && nativeSource) handleImageError()
+      })
+      watchdog.update({ url: nextUrl, enabled: true })
+    }
+    update(url)
+    return { update, destroy: () => watchdog?.destroy() }
+  }
+
+  onDestroy(() => { nativeRetry.dispose(); localView.destroy() })
 </script>
 
 {#if iconValue}
@@ -79,8 +116,8 @@
     aria-hidden={label ? undefined : 'true'}
     aria-label={label || undefined}
   >
-    {#if imageUrl && imageUrl !== failedUrl}
-      <img src={imageUrl} alt="" loading={imageLoading} decoding="async" on:error={handleImageError} />
+    {#if imageUrl && (isLocalBlob || imageUrl !== failedUrl)}
+      <img src={imageUrl} alt="" loading={imageLoading} decoding="async" use:watchNativeImage={imageUrl} onload={handleImageLoad} onerror={handleImageError} />
     {:else if textIcon}
       <span class="category-icon-text">{textIcon}</span>
     {:else}

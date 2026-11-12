@@ -1,12 +1,25 @@
-<script lang="ts">
-  export let internalUrl = ''
-  export let loading = false
-  export let disabled = false
-  export let status = ''
-  export let onParse: (() => void) | undefined = undefined
-  export let onFileSelected: ((file: File) => void) | undefined = undefined
+<svelte:options runes />
 
-  let fileInput: HTMLInputElement | null = null
+<script lang="ts">
+  interface Props {
+    internalUrl?: string
+    loading?: boolean
+    disabled?: boolean
+    status?: string
+    onParse?: () => void
+    onFileSelected?: (file: File) => void
+  }
+
+  let {
+    internalUrl = '',
+    loading = false,
+    disabled = false,
+    status = '',
+    onParse,
+    onFileSelected,
+  }: Props = $props()
+
+  let fileInput = $state<HTMLInputElement | null>(null)
 
   function handleFileChange(event: Event) {
     const input = event.currentTarget as HTMLInputElement
@@ -26,7 +39,7 @@
       <button
         type="button"
         class="ghost-button"
-        on:click={() => onParse?.()}
+        onclick={() => onParse?.()}
         disabled={disabled || loading}
       >
         {loading ? '解析中…' : '解析内网图标'}
@@ -34,7 +47,7 @@
       <button
         type="button"
         class="ghost-button"
-        on:click={() => fileInput?.click()}
+        onclick={() => fileInput?.click()}
         disabled={disabled || loading}
       >
         选择图标文件
@@ -44,7 +57,7 @@
         type="file"
         accept="image/*"
         aria-label="选择内网图标文件"
-        on:change={handleFileChange}
+        onchange={handleFileChange}
       />
     </div>
     {#if status}

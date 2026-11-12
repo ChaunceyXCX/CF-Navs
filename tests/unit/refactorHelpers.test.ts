@@ -3,7 +3,6 @@ import { ErrCode, type PublicBookmark, type PublicCategory } from '../../shared/
 import { ApiError } from '../../src/lib/api'
 import { toBookmarkPayload, toCategoryPayload } from '../../src/lib/adminFormAdapters'
 import {
-  applySortOrder,
   buildPublicDataAfterCategoryDelete,
   removeById,
   updateBookmarkIconBlob,
@@ -11,7 +10,7 @@ import {
   upsertPublicBookmark,
 } from '../../src/lib/appLocalData'
 import { buildBookmarkSubmitPayload, createBookmarkFormValue, getIconifySearchQuery } from '../../src/lib/bookmarkFormIcons'
-import { createIconVersion, getBookmarkFallbackIcon, getBookmarkIconUrl } from '../../src/lib/bookmarkIconDisplay'
+import { getBookmarkFallbackIcon, getBookmarkIconUrl } from '../../src/lib/bookmarkIconDisplay'
 import {
   bookmarkMatchesSearch,
   createHomeDataMemo,
@@ -92,6 +91,7 @@ describe('refactored helper modules', () => {
       ...bookmarkA,
       title: 'Updated GitHub',
       open_method: 2,
+      created_at: 0,
     }).map((bookmark) => bookmark.title)).toEqual(['Updated GitHub'])
 
     expect(buildPublicDataAfterCategoryDelete([categoryA, categoryB], [bookmarkA, bookmarkB], 1)).toEqual({
@@ -137,7 +137,9 @@ describe('refactored helper modules', () => {
       icon_source: 'iconify',
       icon_background_color: '  #fff  ',
       description: '  Help  ',
+      description_mode: 'inherit',
       open_method: 'modal',
+      is_private: false,
     })).toMatchObject({
       category_id: 2,
       title: 'Docs',
@@ -163,8 +165,11 @@ describe('refactored helper modules', () => {
     })
   })
 
-  it('centralizes bookmark icon URL and public-mode error helpers', () => {
-    expect(createIconVersion('same-input')).toBe(createIconVersion('same-input'))
+  it('versions first-party icon URLs so old browser HTTP cache entries are bypassed', () => {
+    const cachedRemote = { ...bookmarkA, icon: 'https://example.com/icon.png', icon_cached: 1 }
+
+    expect(getBookmarkIconUrl(cachedRemote)).toContain('/api/icon/10?v=')
+    expect(getBookmarkIconUrl(cachedRemote)).toContain('&cv=4')
     expect(getBookmarkIconUrl(bookmarkB)).toContain('/api/iconify/mdi/book.svg')
     expect(getBookmarkFallbackIcon({ ...bookmarkA, icon: 'https://example.com/icon.png' }, 'bookmark')).toBe('bookmark')
 

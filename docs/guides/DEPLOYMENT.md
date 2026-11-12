@@ -1,6 +1,6 @@
 # Cloudflare 部署检查清单
 
-在部署到 Cloudflare Workers 之前，请按照此清单逐项检查。你可以选择 Wrangler CLI 部署，也可以在 Cloudflare 控制台导入 GitHub fork 在线部署。
+在部署到 Cloudflare Workers 之前，请按照此清单逐项检查。你可以选择 Wrangler CLI 部署、在 Cloudflare 控制台导入 GitHub fork 在线部署，或在 Workers Builds 不可用时使用 GitHub Actions 备选部署。
 
 ## 部署方式
 
@@ -22,11 +22,38 @@
 6. 保存 Secret 后重新触发生产分支部署。打开部署后的 Workers URL，并访问 `/install`。输入 `SETUP_TOKEN`，再设置管理员用户名和密码；安装器会初始化数据库 schema 和管理员账号。
 7. 进入该 Worker 的 **域和路由** 页面，关闭两个 Workers URL，然后添加并启用你的自定义域名。
 
-> `package.json` 的 Cloudflare Git 元数据只声明 D1/KV 资源，不声明 `SETUP_TOKEN` 或旧版恢复 Secret，因此 GitHub 导入不会自动生成或填充 Secret 参数。正常在线安装不需要 Cloudflare API Token、GitHub Actions 或手动 SQL。只有 `/install` 报 schema 初始化错误时，才在 D1 SQL Console 执行一次 [schema.sql](../../schema.sql) 作为恢复步骤。
+> `package.json` 的 Cloudflare Git 元数据只声明 D1/KV 资源，不声明 `SETUP_TOKEN` 或旧版恢复 Secret，因此 GitHub 导入不会自动生成或填充 Secret 参数。默认在线安装路径不需要 Cloudflare API Token、GitHub Actions 或手动 SQL；只有选用方式三时才需要前两者。只有 `/install` 报 schema 初始化错误时，才在 D1 SQL Console 执行一次 [schema.sql](../../schema.sql) 作为恢复步骤。
 
 > 在线部署命令不要使用 `npm run deploy`：该命令读取本地生成的 `wrangler.local.toml`，适用于 Wrangler CLI 部署。Git 自动部署请使用 Build command `npm run build` 和 Deploy command `npx wrangler deploy`，然后通过 `/install` 完成初始化。
 
 首次资源创建请从生产分支 `main` 触发。资源创建完成前，建议关闭预览分支自动部署；预览分支可能使用 `wrangler versions upload`，不适合作为首次资源初始化流程。
+
+### 方式三：GitHub Actions（备选）
+
+仅当你的 Cloudflare 账号无法使用 **Workers Builds / Git 导入** 时使用。默认部署方式仍是 Cloudflare 账号关联的 Git 构建；不设置下面的仓库变量时，该 workflow 会被跳过，也不会请求任何 Cloudflare 凭据。
+
+此方式由仓库内的 [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml) 在推送后执行 `npm ci`、`npm run build`、`npm run setup:wrangler` 和 `wrangler deploy`，效果等价于在 CI 中运行 Wrangler CLI。它不替代 CI 的 lint、类型检查和单元测试，推送前仍需通过 L0。
+
+1. 在 GitHub 上 Fork 本仓库，并保留一个用于部署的分支（默认 `develop`；若你的 fork 以 `main` 为生产分支，见第 4 步）。
+2. 在目标 Cloudflare 账号创建资源（从已有 Workers Builds 部署迁移时可跳过，资源会被复用）：
+
+   ```bash
+   npx wrangler d1 create cf-navs-db
+   npx wrangler kv namespace create SESSION
+   ```
+
+3. 创建一个 Cloudflare API Token，至少具备 **Workers Scripts:Edit**、**D1:Edit**、**Workers KV Storage:Edit**，并记录 Account ID。不要使用 Global API Key。
+4. 在 fork 的 **Settings → Secrets and variables → Actions** 中配置：
+   - Secrets：`CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`
+   - Variables：`CF_NAVS_DEPLOY_PROVIDER` = `github-actions`
+   - 可选 Variable：`CF_NAVS_DEPLOY_BRANCH` = `develop`（默认）或 `main`
+5. 在 Cloudflare 后台断开该 Worker 的 Workers Builds / Git 集成。两种方式同时开启会对同一次推送重复部署。
+6. 推送到 `CF_NAVS_DEPLOY_BRANCH`，或在 **Actions → Deploy Worker (GitHub Actions fallback) → Run workflow** 手动触发。
+7. 首轮部署完成后，按「方式二」第 5–7 步设置生产环境 `SETUP_TOKEN`，再访问 `/install` 完成初始化。Secret 更新后需要重新触发一次部署。
+
+同步上游更新时，先把上游提交合入部署分支再推送；如果同步方式没有触发 workflow（例如使用 GitHub 网页的 **Sync fork**），到 Actions 页手动执行一次。
+
+> workflow 通过 `setup:wrangler` 按名称查找 `cf-navs-db` D1 与标题包含 `SESSION` 的 KV 命名空间；资源名不一致时会在部署前失败。真实资源 ID 只写入 runner 的临时 `wrangler.local.toml`，不进入仓库。Worker 名称由 `wrangler.toml` 的 `name` 决定（当前为 `cf-navs`）；如果你在 Cloudflare 后台改过 Worker 名称，请同步修改 fork 中的 `name`，否则会部署到另一个 Worker。
 
 ## 📋 Wrangler CLI 部署前准备
 
@@ -164,9 +191,9 @@ Cloudflare Git 和 Wrangler CLI 全新安装都先访问 `/install`，输入 `SE
 - [ ] 通过右键编辑进入编辑弹窗，删除需二次确认
 - [ ] 部署新版后强制刷新一次页面，确认新版 Service Worker 已激活
 - [ ] 首页搜索框输入关键词时，书签区域直接筛选，不出现本地书签下拉列表
-- [ ] 打开浏览器 Network 面板，刷新首页、上下滚动、搜索筛选、后台切回首页时，已缓存的普通书签图标不重复请求 `/api/icon/*`；分类图标可命中 `/api/category-icon/*`，后台预览和新增/编辑弹窗中的 Iconify 图标走 `/api/iconify/*`
+- [ ] 打开浏览器 Network 面板，刷新首页、上下滚动、搜索筛选、后台切回首页时，普通对象图标响应应为 `Cache-Control: no-store`，不应从浏览器磁盘缓存直接返回；Worker edge 可复用公开正文。分类图标可请求 `/api/category-icon/*`，后台预览和新增/编辑弹窗中的 Iconify 图标走 `/api/iconify/*`
 - [ ] 打开 Application -> Storage，清理站点数据后完整浏览首页并翻页查看后台书签列表，缓存空间应保持在小体量范围内，不应因跨域 Iconify `opaque` 响应或后台 `icon_blob` 预览重复写入而持续增长
-- [ ] 编辑弹窗应立即打开；随后可在后台调用 `/api/bookmarks/:id/icon-cache/refresh` 刷新普通书签图标缓存。保存书签后也会显式刷新；该请求遇到慢速 favicon 服务时不应长时间卡住保存流程；新增/编辑弹窗和后台预览不应直连 `https://api.iconify.design/*` 或 `https://icon-sets.iconify.design/*`，首页已保存的 Iconify 图标可直连 `api.iconify.design`
+- [ ] 编辑弹窗应立即打开；随后可在后台调用 `/api/bookmarks/:id/icon-cache/refresh` 刷新普通书签图标缓存。保存书签后也会显式刷新；该请求遇到慢速 favicon 服务时不应长时间卡住保存流程；新增/编辑弹窗、后台预览和首页已保存的 Iconify 图标均应通过同源 `/api/iconify/*` 代理，公开正文可由 Worker edge cache 复用
 - [ ] 登录后首次进入后台可请求 `/api/admin/data`；之后刷新页面、前后台切换优先读取浏览器本地快照，除新增、后台修改、导入、排序保存失败回滚或认证失败外不重复拉取；直接刷新 `/admin` 时保持加载界面并直接进入后台，不短暂显示首页
 - [ ] Iconify 失败时显示文字 fallback；普通 HTTP(S) 书签图标代理失败时可回退原始 URL，若原始 URL 也失败则显示书签文字 fallback
 

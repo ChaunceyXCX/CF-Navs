@@ -1,21 +1,41 @@
+<svelte:options runes />
+
 <script lang="ts">
   import type { BookmarkFormValue } from '../lib/adminTypes'
   import type { CategoryTreeOption } from '../lib/categorySelect'
   import CategoryTreeSelect from './CategoryTreeSelect.svelte'
 
-  export let categoryId: string | number | undefined = undefined
-  export let title = ''
-  export let url = ''
-  export let internalUrl = ''
-  export let openMethod: BookmarkFormValue['open_method'] = 'new_tab'
-  export let isPrivate = false
-  export let description = ''
-  export let descriptionMode: BookmarkFormValue['description_mode'] = 'inherit'
-  export let categories: CategoryTreeOption[] = []
-  export let loading = false
-  export let titleLoading = false
-  export let onUrlBlur: (() => void) | undefined = undefined
-  export let onInternalUrlBlur: (() => void) | undefined = undefined
+  interface Props {
+    categoryId?: string | number
+    title?: string
+    url?: string
+    internalUrl?: string
+    openMethod?: BookmarkFormValue['open_method']
+    isPrivate?: boolean
+    description?: string
+    descriptionMode?: BookmarkFormValue['description_mode']
+    categories?: CategoryTreeOption[]
+    loading?: boolean
+    titleLoading?: boolean
+    onUrlBlur?: () => void
+    onInternalUrlBlur?: () => void
+  }
+
+  let {
+    categoryId = $bindable(undefined),
+    title = $bindable(''),
+    url = $bindable(''),
+    internalUrl = $bindable(''),
+    openMethod = $bindable('new_tab'),
+    isPrivate = $bindable(false),
+    description = $bindable(''),
+    descriptionMode = $bindable('inherit'),
+    categories = [],
+    loading = false,
+    titleLoading = false,
+    onUrlBlur,
+    onInternalUrlBlur,
+  }: Props = $props()
 </script>
 
 <div class="field-compact field-label">
@@ -45,7 +65,7 @@
     type="url"
     placeholder="https://example.com"
     required
-    on:blur={() => onUrlBlur?.()}
+    onblur={() => onUrlBlur?.()}
   />
 </label>
 
@@ -55,7 +75,7 @@
     bind:value={internalUrl}
     type="url"
     placeholder="http://192.168.1.10:8080"
-    on:blur={() => onInternalUrlBlur?.()}
+    onblur={() => onInternalUrlBlur?.()}
   />
   <small class="field-note">填写后点击卡片会并行探测两个地址，自动跳转延迟更低的一个。</small>
 </label>

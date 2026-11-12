@@ -6,6 +6,7 @@
 
 - **Wrangler CLI 部署**：适合本地可运行命令行的用户，完整控制 D1/KV 创建和部署，并通过 `/install` 完成 schema 与管理员初始化。
 - **Cloudflare 控制台在线部署**：适合先 Fork 项目，再通过 Cloudflare 关联 GitHub 自动构建部署的用户。
+- **GitHub Actions 部署（备选）**：当 Cloudflare Workers Builds 不可用时，可用仓库内置 workflow 在推送后自动部署；默认不启用，需要显式设置仓库变量和 Cloudflare API Token。
 
 ## 方式一：Wrangler CLI 部署
 
@@ -69,7 +70,7 @@ npm run deploy
 
 在“站点设置”中修改配置时，右侧首页预览会使用未保存的表单值实时展示浅色/深色主题、首页标题、经常访问区域、卡片和布局效果；预览中的自定义 CSS 与页脚 HTML 只在隔离环境中检查，不会执行脚本或保存数据。首页打开书签后会累计点击次数，进入后台“访问分析”会刷新数据并显示总点击、已访问/零访问书签、Top 20 排行和零访问书签分页。
 
-一级标题、二级标签、搜索分组和折叠导航应显示已保存的分类图片、data URI、文字或表情图标。打开浏览器 Network 面板时，刷新首页、上下滚动、搜索和后台切回首页不应让已缓存的普通书签图标重复请求 `/api/icon/*`；HTTP(S) 分类图片可请求 `/api/category-icon/*`，后台预览和新增/编辑弹窗中的 Iconify 图标应请求 `/api/iconify/*`。首页展示已保存的 Iconify 书签图标时可直接请求 `api.iconify.design` 并依赖浏览器 HTTP 缓存，但新增/编辑弹窗中的 Iconify 候选、手动预览和从 `icon-sets.iconify.design` 粘贴的页面链接应走 `/api/iconify/*`。
+一级标题、二级标签、搜索分组和折叠导航应显示已保存的分类图片、data URI、文字或表情图标。打开浏览器 Network 面板时，普通对象图标 `/api/icon/*` 与 `/api/category-icon/*` 的客户端响应应为 `no-store`，不应从浏览器磁盘缓存直接返回；Worker edge 负责公开正文复用，因此重新打开浏览器可能再次出现网络请求。新增/编辑弹窗、后台预览和首页已保存的 Iconify 图标都应请求同源 `/api/iconify/*`，公开正文可由 Worker edge cache 复用。
 
 编辑书签时弹窗应立即显示，随后可在后台调用 `/api/bookmarks/:id/icon-cache/refresh` 刷新普通书签图标缓存；保存书签后也会显式刷新。该请求遇到慢速外站图标时不应长时间卡住保存流程；如果缓存失败但保存的是 `https://favicon.im/...`、Google favicon 或自定义 HTTP(S) 图标，首页仍应使用已保存 URL 显示图标，而不是退成标题首字。
 
@@ -90,7 +91,19 @@ npx wrangler deploy
 6. 保存 Secret 后重新触发生产分支部署。打开部署后的 Workers URL，并访问 `/install`。输入 `SETUP_TOKEN`，再设置管理员用户名和密码；安装器会初始化数据库 schema 和管理员账号。
 7. 进入该 Worker 的 **域和路由** 页面，关闭两个 Workers URL，然后添加并启用你的自定义域名。
 
-`package.json` 的 Cloudflare Git 元数据只声明 D1/KV 资源，不声明 `SETUP_TOKEN` 或旧版恢复 Secret，因此 GitHub 导入不会自动生成或填充 Secret 参数。正常路径无需 Cloudflare API Token、GitHub Actions 或手动 SQL；只有安装器报 schema 初始化错误时，才在 D1 SQL Console 执行 [schema.sql](../../schema.sql) 进行恢复。首次部署请从生产分支 `main` 触发，资源创建完成前不要使用预览分支自动部署。
+`package.json` 的 Cloudflare Git 元数据只声明 D1/KV 资源，不声明 `SETUP_TOKEN` 或旧版恢复 Secret，因此 GitHub 导入不会自动生成或填充 Secret 参数。默认路径无需 Cloudflare API Token、GitHub Actions 或手动 SQL；只有选用方式三时才需要前两者。只有安装器报 schema 初始化错误时，才在 D1 SQL Console 执行 [schema.sql](../../schema.sql) 进行恢复。首次部署请从生产分支 `main` 触发，资源创建完成前不要使用预览分支自动部署。
+
+## 方式三：GitHub Actions（备选）
+
+仅当 Cloudflare Workers Builds / Git 导入不可用时使用；默认部署仍是 Cloudflare 账号关联的 Git 构建。启用后，推送到部署分支会自动执行构建和 `wrangler deploy`。
+
+1. Fork 后创建或复用 `cf-navs-db` D1 与 `SESSION` KV 命名空间。
+2. 创建具备 Workers Scripts、D1、KV 编辑权限的 Cloudflare API Token。
+3. 在 fork 的 **Settings → Secrets and variables → Actions** 添加 Secrets `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ACCOUNT_ID`，并添加 Variable `CF_NAVS_DEPLOY_PROVIDER=github-actions`；默认部署分支是 `develop`，以 `main` 为生产分支时再加 `CF_NAVS_DEPLOY_BRANCH=main`。
+4. 断开该 Worker 的 Workers Builds / Git 集成，避免重复部署。
+5. 推送到部署分支后，按下方首次登录步骤设置 `SETUP_TOKEN` 并访问 `/install`。
+
+完整权限、资源命名和排障要求见 [DEPLOYMENT.md](DEPLOYMENT.md) 的「方式三」。
 
 ## 🔑 首次登录
 

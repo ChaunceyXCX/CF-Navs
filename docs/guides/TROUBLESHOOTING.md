@@ -178,7 +178,14 @@ npm run deploy
 - 自定义图片 URL
 - 表情或短文字
 
-如果预览正常但保存后仍显示标题首字，请先强制刷新页面让新版 Service Worker 接管，再检查书签保存的 `icon` 是否仍是可访问的 HTTP(S) 图片地址。首页首次遇到 `icon_cached=true` 且本地图标缓存不存在的书签时，可能为每个图标请求一次 `/api/icon/:id` 并写入 `cf-navs-bookmark-icons-v1`；成功后刷新、滚动和重新打开浏览器都不应重复请求。若每次重开仍重新请求，先在 Application 中确认该 Cache Storage 条目是否存在，再检查当前页面是否由旧静态资源控制。
+如果预览正常但保存后仍显示标题首字，请先检查书签保存的 `icon` 是否仍是可访问的 HTTP(S) 图片地址，并确认新版应用已加载。标准模式在缺少 D1 图标正文时按需请求 `/api/icon/:id`；该响应保持 `no-store`，只用于当前渲染。可信设备在开关已启用、会话回执有效且版本许可时，先读 IndexedDB；未命中才请求会话鉴权的 `/api/icon-local-copy`，成功并解码后才保存本地正文。标准模式或协议不兼容时仍走普通展示回退，不能把普通代理响应手动写入缓存。
+
+### 图标没有走本地缓存 / 显示旧图标
+
+- 本地图标保存在 IndexedDB `cf-navs-icons-v2`（DevTools → Application → IndexedDB），每个书签 / 分类一条，`version` 是图标代理 URL（不含 `key`）。版本不同会自动重下，不需要手动清理。
+- 单张超过 512 KiB 的图片只显示不保存；浏览器配额满时退回内存，刷新后会重新请求。
+- 兜底文字图（响应头 `X-Icon-Fallback: 1`）和失败请求不会保存；恢复由卡片原有的有限重试负责。
+- 若怀疑本地条目损坏，删除该 IndexedDB 库后刷新即可，下次显示会重新下载。
 
 ### Iconify 图标不显示
 
@@ -190,7 +197,7 @@ simple-icons:github
 https://icon-sets.iconify.design/mdi/home/
 ```
 
-新增/编辑弹窗和后台预览请求应走 `/api/iconify/*`；首页展示已保存的 Iconify 图标时可以直接请求 `api.iconify.design`，并由浏览器 HTTP 缓存复用，避免增加 Worker 请求数。Service Worker 不应把跨域 `opaque` Iconify 响应写入 Cache Storage。
+新增/编辑弹窗、后台预览和首页已保存的 Iconify 图标都应走同源 `/api/iconify/*` 代理，公开正文可由 Worker edge cache 复用。Service Worker 只缓存可读且不超过 512KB 的跨域 Iconify 资源，不持久化 `opaque` 响应。
 
 ### 部署新版后图标行为仍旧
 
@@ -206,7 +213,7 @@ https://icon-sets.iconify.design/mdi/home/
 - 旧实现曾把完整后台聚合数据中的 `icon_blob` 又复制到浏览器本地图标缓存；当前聚合响应只提供 `icon_cached`，该条仅用于识别旧版本遗留数据。
 - 多次登录留下旧 `AdminData` 快照。
 
-当前实现会跳过跨域 `opaque` 响应、限制图标响应写入体积、清理旧登录态快照，并在后台已有 `icon_blob` 时清理同 key 的本地图标副本。
+对象图标正文保存在独立的 IndexedDB（`cf-navs-icons-v2`），不计入 Cache Storage；普通对象代理和 API 响应仍不进入 Cache Storage。
 
 ## 首页公开访问异常
 

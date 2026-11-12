@@ -9,15 +9,14 @@ import type {
   Settings,
   SiteConfig,
 } from '../../shared/types'
+import { authApi, getErrorMessage, isUnauthorizedError } from './api'
 import {
-  authApi,
+  AUTH_STORAGE_KEY,
   clearStoredAuthSession,
-  getErrorMessage,
   getStoredAuthSession,
-  isUnauthorizedError,
   setStoredAuthSession,
-} from './api'
-import { clearIconAccessKey } from './iconAccessKey'
+  subscribeBrowserStorageChanges,
+} from './authSession'
 
 export interface LoadableState<T> {
   data: T
@@ -70,11 +69,15 @@ function createConfigStore() {
 
 function createPublicStore() {
   const { subscribe, set, update } = writable<PublicState>(createLoadableState<PublicData | null>(null))
+  let dataEpoch = 0
 
   return {
     subscribe,
-    reset: () => set(createLoadableState<PublicData | null>(null)),
-    setData: (data: PublicData | null) => set({ data, loading: false, loaded: data !== null, error: null }),
+    reset: () => { dataEpoch += 1; set(createLoadableState<PublicData | null>(null)) },
+    setData: (data: PublicData | null) => {
+      dataEpoch += 1
+      set({ data, loading: false, loaded: data !== null, error: null })
+    },
     incrementClick: (bookmarkId: number) => {
       update((state) => {
         if (!state.data) return state
@@ -88,6 +91,7 @@ function createPublicStore() {
       })
     },
     setDataProgressively: (data: PublicData) => {
+      const epoch = ++dataEpoch
       const BATCH_SIZE = 60
       const all = data.bookmarks
       if (all.length <= BATCH_SIZE) {
@@ -101,10 +105,10 @@ function createPublicStore() {
         loaded: true,
         error: null,
       })
-      // Schedule remaining batches via microtasks
+      // A reset or replacement invalidates the remaining timer batches.
       let offset = BATCH_SIZE
       const addMore = () => {
-        if (offset >= all.length) return
+        if (epoch !== dataEpoch || offset >= all.length) return
         const end = Math.min(offset + BATCH_SIZE, all.length)
         set({
           data: { ...data, bookmarks: all.slice(0, end) },
@@ -120,13 +124,39 @@ function createPublicStore() {
   }
 }
 
+// 会话生命周期钩子：authStore 不直接依赖本地图标库或图标访问 key，
+// 由 appServices.initAppServices() 在启动时接上（见 main.ts）。没接时为空操作。
+export interface AuthLifecycleHooks {
+  /** 登出开始时调用（先于撤销请求），用于删除本机私密图标条目。 */
+  onLogoutStart: () => void
+  /** 本地会话消失时调用（登出、401、其它标签页退出），用于清理跟会话绑定的凭据。 */
+  onSessionCleared: () => void
+}
+
+const noopAuthLifecycle: AuthLifecycleHooks = { onLogoutStart: () => {}, onSessionCleared: () => {} }
+
 function createAuthStore() {
+  let lifecycle: AuthLifecycleHooks = noopAuthLifecycle
   const initialSession = getStoredAuthSession()
-  const { subscribe, set, update } = writable<AuthState>({
+  const { subscribe, update } = writable<AuthState>({
     session: initialSession,
     initialized: false,
     loading: false,
     error: null,
+  })
+
+  function reflectSession(session: LoginResp | null): void {
+    update(state => ({ ...state,
+      session: state.session?.token === session?.token && state.session?.expires_at === session?.expires_at && state.session?.username === session?.username ? state.session : session,
+      initialized: true, loading: false, error: null,
+    }))
+  }
+  subscribeBrowserStorageChanges(key => {
+    if (key === AUTH_STORAGE_KEY || key === null) {
+      const session = getStoredAuthSession()
+      if (!session) lifecycle.onSessionCleared()
+      reflectSession(session)
+    }
   })
 
   function applySession(session: LoginResp | null): void {
@@ -135,15 +165,10 @@ function createAuthStore() {
     } else {
       clearStoredAuthSession()
       // 图标授权 key 跟着会话走：登出或 401 后不能继续把过期 key 挂在 URL 上。
-      clearIconAccessKey()
+      lifecycle.onSessionCleared()
     }
 
-    set({
-      session,
-      initialized: true,
-      loading: false,
-      error: null,
-    })
+    reflectSession(session)
   }
 
   async function initialize(): Promise<void> {
@@ -175,6 +200,8 @@ function createAuthStore() {
   // 返回服务端的撤销结果，让调用方能区分「token 真的作废了」和「只清了本地登录态」。
   // 没有本地会话可退、或请求本身失败时返回 null——此时无从判断服务端状态。
   async function logout(): Promise<LogoutResp | null> {
+    const logoutToken = getStoredAuthSession()?.token
+    lifecycle.onLogoutStart()
     update((state) => ({ ...state, loading: true, error: null }))
 
     let result: LogoutResp | null = null
@@ -188,9 +215,9 @@ function createAuthStore() {
         update((state) => ({ ...state, loading: false, error: toErrorMessage(error) }))
         throw error
       }
+    } finally {
+      if (getStoredAuthSession()?.token === logoutToken) applySession(null)
     }
-
-    applySession(null)
     return result
   }
 
@@ -200,6 +227,7 @@ function createAuthStore() {
     login,
     logout,
     setSession: (session: LoginResp | null) => applySession(session),
+    configureLifecycle: (hooks: AuthLifecycleHooks | null) => { lifecycle = hooks ?? noopAuthLifecycle },
     resetError: () => update((state) => ({ ...state, error: null })),
   }
 }
@@ -214,6 +242,15 @@ function createAdminStore() {
       update((state) => ({ ...state, data: { ...state.data, categories }, loaded: true, error: null })),
     setBookmarks: (bookmarks: Bookmark[]) =>
       update((state) => ({ ...state, data: { ...state.data, bookmarks }, loaded: true, error: null })),
+    incrementClick: (bookmarkId: number) =>
+      update((state) => ({
+        ...state,
+        data: {
+          ...state.data,
+          bookmarks: state.data.bookmarks.map((bm) =>
+            bm.id === bookmarkId ? { ...bm, click_count: (bm.click_count ?? 0) + 1 } : bm),
+        },
+      })),
     setSettings: (settings: Settings | null) =>
       update((state) => ({ ...state, data: { ...state.data, settings }, loaded: true, error: null })),
     replaceData: (data: AdminData) => set({ data, loading: false, loaded: true, error: null }),

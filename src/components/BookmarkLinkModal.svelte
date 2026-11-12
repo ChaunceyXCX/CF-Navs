@@ -1,31 +1,46 @@
+<svelte:options runes />
+
 <script lang="ts">
-  import { onMount } from 'svelte'
   import { chooseFastestBookmarkUrl } from '../lib/bookmarkUrlRouter'
 
   type AsyncVoid<T = void> = T | Promise<T>
 
-  export let title = ''
-  export let url = ''
-  export let internalUrl: string | null = ''
-  export let onClose: (() => AsyncVoid) | undefined = undefined
+  interface Props {
+    title?: string
+    url?: string
+    internalUrl?: string | null
+    onClose?: () => AsyncVoid
+  }
 
-  let resolvedUrl = url
-  let resolving = Boolean(internalUrl)
+  let { title = '', url = '', internalUrl = '', onClose }: Props = $props()
 
-  onMount(async () => {
-    if (!internalUrl) {
-      resolvedUrl = url
+  let resolvedUrl = $state('')
+  let resolving = $state(false)
+  let resolveToken = 0
+
+  // props 变化（例如弹层复用时切换书签）也要重新选择地址；token 丢弃旧探测结果。
+  $effect.pre(() => {
+    const currentUrl = url
+    const currentInternalUrl = internalUrl
+    const token = ++resolveToken
+    resolvedUrl = currentUrl
+
+    if (!currentInternalUrl) {
       resolving = false
       return
     }
 
-    try {
-      resolvedUrl = await chooseFastestBookmarkUrl({ url, internal_url: internalUrl })
-    } catch {
-      resolvedUrl = url
-    } finally {
-      resolving = false
-    }
+    resolving = true
+    void chooseFastestBookmarkUrl({ url: currentUrl, internal_url: currentInternalUrl })
+      .then((nextUrl) => {
+        if (token === resolveToken) resolvedUrl = nextUrl
+      })
+      .catch(() => {
+        if (token === resolveToken) resolvedUrl = currentUrl
+      })
+      .finally(() => {
+        if (token === resolveToken) resolving = false
+      })
   })
 
   function mountToBody(node: HTMLElement) {
@@ -50,7 +65,7 @@
       <div class="link-modal-actions">
         {#if resolving}<span class="link-modal-status">正在选择最快地址…</span>{/if}
         <a href={resolvedUrl || url} target="_blank" rel="noopener noreferrer">新窗口打开</a>
-        <button type="button" on:click={handleClose}>关闭</button>
+        <button type="button" onclick={handleClose}>关闭</button>
       </div>
     </div>
     {#if resolvedUrl && !resolving}

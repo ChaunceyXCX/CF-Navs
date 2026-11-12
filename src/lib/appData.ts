@@ -1,7 +1,7 @@
 import type { AdminData, Bookmark, Category, PublicBookmark, PublicData, PublicSettings, Settings } from '../../shared/types'
 import { toPublicSettings } from '../../shared/settings'
 import { colorToRgbString } from './color'
-import { gradientPresets } from './themePresets'
+import { getPresetRenderTokens } from './themePresetRender'
 
 export { toPublicSettings } from '../../shared/settings'
 
@@ -13,6 +13,11 @@ export type AdminCategorySummary = {
   sort?: number
   bookmarkCount?: number
   is_private?: boolean
+  icon_blob?: string
+  icon_display?: 'image' | 'text' | 'empty'
+  icon_revision?: string | null
+  icon_write_epoch?: number
+  icon_cached?: boolean | number | null
 }
 
 export type AdminBookmarkSummary = {
@@ -25,6 +30,9 @@ export type AdminBookmarkSummary = {
   icon_source?: string
   icon_background_color?: string
   icon_blob?: string
+  icon_display?: 'image' | 'text' | 'empty'
+  icon_revision?: string | null
+  icon_write_epoch?: number
   icon_cached?: boolean | number | null
   description?: string
   description_mode?: 'always' | 'hover' | 'hidden' | null
@@ -53,6 +61,9 @@ export function toAdminCategories(categories: Category[], bookmarks: Bookmark[])
     parent_id: category.parent_id ?? null,
     title: category.title,
     icon: category.icon ?? '',
+    ...(category.icon_display ? { icon_display: category.icon_display } : {}),
+    ...(category.icon_revision !== undefined ? { icon_revision: category.icon_revision, icon_write_epoch: category.icon_write_epoch } : {}),
+    ...(category.icon_cached !== undefined ? { icon_cached: category.icon_cached } : {}),
     sort: category.sort,
     bookmarkCount: bookmarkCountByCategory.get(category.id) ?? 0,
     ...(category.is_private === true || category.is_private === 1 ? { is_private: true } : {}),
@@ -71,6 +82,8 @@ export function toAdminBookmarks(bookmarks: Bookmark[]): AdminBookmarkSummary[] 
     icon_background_color: bookmark.icon_background_color ?? '',
     icon_blob: bookmark.icon_blob ?? '',
     icon_cached: bookmark.icon_cached ?? false,
+    ...(bookmark.icon_display ? { icon_display: bookmark.icon_display } : {}),
+    ...(bookmark.icon_revision !== undefined ? { icon_revision: bookmark.icon_revision, icon_write_epoch: bookmark.icon_write_epoch } : {}),
     description: bookmark.description ?? '',
     description_mode: bookmark.description_mode ?? null,
     open_method: bookmark.open_method === 2 ? 'same_tab' : bookmark.open_method === 3 ? 'modal' : 'new_tab',
@@ -92,6 +105,8 @@ export function toPublicBookmark(bookmark: Bookmark): PublicBookmark {
     icon_background_color: bookmark.icon_background_color,
     icon_blob: bookmark.icon_blob,
     icon_cached: bookmark.icon_cached,
+    ...(bookmark.icon_display ? { icon_display: bookmark.icon_display } : {}),
+    ...(bookmark.icon_revision !== undefined ? { icon_revision: bookmark.icon_revision, icon_write_epoch: bookmark.icon_write_epoch } : {}),
     description: bookmark.description,
     description_mode: bookmark.description_mode ?? null,
     open_method: bookmark.open_method,
@@ -149,12 +164,13 @@ export function getDataVersion(data: { version?: string } | null | undefined): s
 }
 
 export function stripPublicDataVersion(data: PublicData): PublicData {
-  const { version: _version, ...rest } = data
+  // auth_receipt：旧版服务端 / 旧快照的字段，丢弃。
+  const { version: _version, auth_receipt: _receipt, ...rest } = data as PublicData & { auth_receipt?: unknown }
   return rest as PublicData
 }
 
 export function stripAdminDataVersion(data: AdminData): AdminData {
-  const { version: _version, ...rest } = data
+  const { version: _version, auth_receipt: _receipt, ...rest } = data as AdminData & { auth_receipt?: unknown }
   return rest as AdminData
 }
 
@@ -206,11 +222,12 @@ export function mergePublicData(current: PublicData | null, next: PublicData): P
   const bookmarks = mergeRowsById(current.bookmarks, next.bookmarks)
   const settings = jsonEqual(current.settings, next.settings) ? current.settings : next.settings
 
-  if (categories === current.categories && bookmarks === current.bookmarks && settings === current.settings) {
+  if (categories === current.categories && bookmarks === current.bookmarks && settings === current.settings &&
+    current.dataset_epoch === next.dataset_epoch && current.icon_epoch === next.icon_epoch) {
     return current
   }
 
-  return { categories, bookmarks, settings }
+  return { ...next, categories, bookmarks, settings }
 }
 
 export function mergeAdminData(current: AdminData, next: AdminData): AdminData {
@@ -218,19 +235,37 @@ export function mergeAdminData(current: AdminData, next: AdminData): AdminData {
   const bookmarks = mergeRowsById(current.bookmarks, next.bookmarks)
   const settings = jsonEqual(current.settings, next.settings) ? current.settings : next.settings
 
-  if (categories === current.categories && bookmarks === current.bookmarks && settings === current.settings) {
+  if (categories === current.categories && bookmarks === current.bookmarks && settings === current.settings &&
+    current.dataset_epoch === next.dataset_epoch && current.icon_epoch === next.icon_epoch) {
     return current
   }
 
-  return { categories, bookmarks, settings }
+  return { ...next, categories, bookmarks, settings }
 }
 
 export function adminDataToPublicData(data: AdminData, settings: Settings): PublicData {
   return {
+    ...(data.dataset_epoch ? { dataset_epoch: data.dataset_epoch } : {}),
+    ...(data.icon_epoch !== undefined ? { icon_epoch: data.icon_epoch } : {}),
     categories: data.categories,
     bookmarks: toPublicBookmarks(data.bookmarks),
     settings: toPublicSettings(settings),
   }
+}
+
+function resolveCustomAccentColor(settings: PublicSettings, theme: 'light' | 'dark'): string {
+  if (settings.background_preset_id !== 'custom') return ''
+  return (theme === 'dark' ? settings.custom_dark_accent_color : settings.custom_accent_color)?.trim() ?? ''
+}
+
+export function resolveThemeAccentColor(settings: PublicSettings | null, theme: 'light' | 'dark'): string {
+  const activePreset = settings ? getPresetRenderTokens(settings.background_preset_id) : undefined
+  const customAccentColor = settings ? resolveCustomAccentColor(settings, theme) : ''
+  const fallbackAccentColor = theme === 'dark' ? '#7dd3fc' : '#2563eb'
+
+  return activePreset
+    ? (theme === 'dark' ? activePreset.darkAccentColor : activePreset.accentColor)
+    : (customAccentColor || fallbackAccentColor)
 }
 
 export function buildHomeBackground(settings: PublicSettings | null, theme: 'light' | 'dark'): string {
@@ -238,7 +273,7 @@ export function buildHomeBackground(settings: PublicSettings | null, theme: 'lig
 
   const background = settings.backgrounds?.[theme] ?? settings.background
   const blur = Math.min(40, Math.max(0, Number(background.blur) || 0))
-  const mask = Math.min(1, Math.max(0, Number(background.mask) ?? 0.3))
+  const mask = Math.min(1, Math.max(0, Number(background.mask)))
   const maskColor = background.maskColor?.trim() || '#000000'
 
   let layer = background.value
@@ -247,7 +282,7 @@ export function buildHomeBackground(settings: PublicSettings | null, theme: 'lig
   }
   const backgroundFilter = blur > 0 ? `blur(${blur}px)` : 'none'
   const backgroundTransform = blur > 0 ? 'scale(1.06)' : 'none'
-  const activePreset = gradientPresets.find((preset) => preset.id === settings.background_preset_id)
+  const activePreset = getPresetRenderTokens(settings.background_preset_id)
   const storedCardColor = settings.card_background_color?.trim() || '#ffffff'
   const lightCardColor = activePreset?.surface === 'flat' && storedCardColor.toLowerCase() === '#ffffff'
     ? activePreset.cardBackgroundColor
@@ -255,16 +290,9 @@ export function buildHomeBackground(settings: PublicSettings | null, theme: 'lig
   const cardColor = activePreset?.surface === 'flat' && theme === 'dark'
     ? activePreset.darkCardBackgroundColor
     : lightCardColor
-  const customAccentColor = settings.background_preset_id === 'custom'
-    ? settings.custom_accent_color?.trim()
-    : ''
-  const customDarkAccentColor = settings.background_preset_id === 'custom'
-    ? settings.custom_dark_accent_color?.trim()
-    : ''
+  const customAccentColor = resolveCustomAccentColor(settings, theme)
   const fallbackAccentColor = theme === 'dark' ? '#7dd3fc' : '#2563eb'
-  const accentColor = activePreset
-    ? (theme === 'dark' ? activePreset.darkAccentColor : activePreset.accentColor)
-    : (theme === 'dark' ? customDarkAccentColor || fallbackAccentColor : customAccentColor || fallbackAccentColor)
+  const accentColor = resolveThemeAccentColor(settings, theme)
   const customCardTextColor = settings.card_text_color?.trim()
   const cardTitleColor = customCardTextColor || (
     activePreset
@@ -284,7 +312,7 @@ export function buildHomeBackground(settings: PublicSettings | null, theme: 'lig
   return [
     `--home-background: ${layer};`,
     `--home-background-blur: ${blur}px;`,
-    `--custom-accent-color: ${theme === 'dark' ? customDarkAccentColor || fallbackAccentColor : customAccentColor || fallbackAccentColor};`,
+    `--custom-accent-color: ${customAccentColor || fallbackAccentColor};`,
     `--home-background-filter: ${backgroundFilter};`,
     `--home-background-transform: ${backgroundTransform};`,
     `--home-background-mask: ${mask};`,

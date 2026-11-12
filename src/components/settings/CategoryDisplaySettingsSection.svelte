@@ -1,10 +1,18 @@
+<svelte:options runes />
+
 <script lang="ts">
   import { tick } from 'svelte'
   import { cloneSettingsForm, type SettingsFormModel } from '../../lib/settingsForm'
   import Slider from '../ui/Slider.svelte'
+  import ColorAlphaInput from '../ColorAlphaInput.svelte'
 
-  export let form: SettingsFormModel
-  export let saving = false
+  interface Props {
+    /** SettingsPanel 以 `bind:form` 传入；写回字段或整体替换都经 bindable setter 通知父组件。 */
+    form: SettingsFormModel
+    saving?: boolean
+  }
+
+  let { form = $bindable(), saving = false }: Props = $props()
 
   async function syncForm(): Promise<void> {
     await tick()
@@ -12,7 +20,7 @@
   }
 </script>
 
-<fieldset class="group group-wide category-display-settings" disabled={saving} on:input={() => void syncForm()}>
+<fieldset class="group group-wide category-display-settings" disabled={saving} oninput={() => void syncForm()}>
   <legend>分类标题字体与图标</legend>
   <p class="group-desc">按分类层级统一调整首页、导航和搜索分组的标题字号与图标尺寸。移动端自动使用 0.88 缩放，不额外增加一套设置。</p>
 
@@ -39,6 +47,15 @@
         format="px"
         bind:value={form.category_display.root_icon_size}
       />
+      <div class="category-color-field">
+        <span>标题颜色</span>
+        <ColorAlphaInput
+          bind:value={form.category_display.root_title_color}
+          onchange={() => void syncForm()}
+          placeholder="留空跟随主题色"
+          inputLabel="一级分类标题颜色值"
+        />
+      </div>
     </section>
 
     <section class="category-display-level" aria-labelledby="category-display-child-title">
@@ -63,6 +80,15 @@
         format="px"
         bind:value={form.category_display.child_icon_size}
       />
+      <div class="category-color-field">
+        <span>标题颜色</span>
+        <ColorAlphaInput
+          bind:value={form.category_display.child_title_color}
+          onchange={() => void syncForm()}
+          placeholder="留空跟随主题色"
+          inputLabel="二级分类标题颜色值"
+        />
+      </div>
     </section>
   </div>
 </fieldset>
@@ -109,6 +135,17 @@
     margin: 0;
     color: var(--sp-strong);
     font-size: 13px;
+  }
+
+  .category-color-field {
+    display: grid;
+    gap: 6px;
+  }
+
+  .category-color-field span {
+    color: var(--sp-strong);
+    font-size: 12px;
+    font-weight: 600;
   }
 
   @media (max-width: 620px) {

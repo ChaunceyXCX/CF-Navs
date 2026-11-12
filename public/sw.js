@@ -2,19 +2,19 @@
 // Strategy:
 // - App shell and hashed assets: cache first.
 // - Navigations: stale-while-revalidate — serve the cached shell immediately, refresh in the background.
-// - /api/category-icon/*: cache first because category icons are low volume.
+// - `/api/category-icon/*` is network-only. The Worker performs the authoritative visibility gate before
+//   its edge cache, and Cache Storage cannot revoke a private/public transition for an old entry.
 // - Any icon response marked `no-store` (private objects fetched with a signed access key)
 //   is never written to Cache Storage — Cache Storage does not honour Cache-Control on its own.
-// - /api/icon/* and /api/iconify/*: do not write to Cache Storage; rely on HTTP and edge caching.
-// - Other /api/* requests: network only.
+// - `/api/icon/*` and `/api/iconify/*` do not write bookmark icon responses to Cache Storage; Iconify
+//   keeps its existing asset cache because it is not a user-private object endpoint.
+// - Other `/api/*` requests: network only.
 
 // Vite replaces this marker with a fingerprint of the built shell, SW, and chunks.
 // The source fallback keeps the unbuilt public file usable during local development.
-const CACHE = 'cf-navs-v16'
+const CACHE = 'cf-navs-v17'
 const RUNTIME_CACHE_PREFIX = 'cf-navs-v'
 const APP_SHELL = ['/index.html', '/manifest.webmanifest', '/icon.ico', '/icon.png']
-const ICON_FALLBACK_TTL_MS = 5 * 60 * 1000
-const ICON_FALLBACK_CACHED_AT = 'X-CF-Navs-Fallback-Cached-At'
 const MAX_ICON_CACHE_BYTES = 512 * 1024
 const SHELL_URL = '/index.html'
 
@@ -54,6 +54,19 @@ function normalizeBuildAssetResponse(request, response) {
   return assetNotFoundResponse()
 }
 
+// Installation may follow /index.html -> /. Chromium rejects that cached
+// redirected Response for navigations whose redirect mode is "manual". Preserve
+// bytes/headers but create a fresh response; clone so background shell comparison
+// can still read the cached response independently.
+function navigationResponse(response) {
+  if (!response || !response.redirected) return response
+  return new Response(response.clone().body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  })
+}
+
 function matchCurrentCache(request) {
   return caches.open(CACHE).then((cache) => cache.match(request))
 }
@@ -65,36 +78,7 @@ function cacheResponse(request, response) {
   caches.open(CACHE).then((cache) => cache.put(request, copy)).catch(() => undefined)
 }
 
-function isIconFallback(response) {
-  return response.headers.get('X-Icon-Fallback') === '1'
-}
 
-function fallbackResponseForCache(response) {
-  const headers = new Headers(response.headers)
-  headers.set(ICON_FALLBACK_CACHED_AT, String(Date.now()))
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  })
-}
-
-async function matchCachedIcon(request) {
-  const cached = await matchCurrentCache(request)
-  if (!cached) return null
-
-  if (!isIconFallback(cached)) {
-    return cached
-  }
-
-  const cachedAt = Number(cached.headers.get(ICON_FALLBACK_CACHED_AT) || '0')
-  if (cachedAt > 0 && Date.now() - cachedAt <= ICON_FALLBACK_TTL_MS) {
-    return cached
-  }
-
-  caches.open(CACHE).then((cache) => cache.delete(request)).catch(() => undefined)
-  return null
-}
 
 function cacheIconResponse(request, response) {
   if (!response.ok) return
@@ -104,12 +88,12 @@ function cacheIconResponse(request, response) {
   // 浏览器 profile 下的访客态）cache-first 命中它。必须显式拒收。
   if ((response.headers.get('Cache-Control') || '').includes('no-store')) return
 
-  const contentLength = Number(response.headers.get('Content-Length') || '0')
-  if (contentLength > MAX_ICON_CACHE_BYTES) return
-
+  const contentLengthHeader = response.headers.get('Content-Length')
+  if (!contentLengthHeader || !/^\d+$/.test(contentLengthHeader)) return
+  const contentLength = Number(contentLengthHeader)
+  if (!Number.isSafeInteger(contentLength) || contentLength < 0 || contentLength > MAX_ICON_CACHE_BYTES) return
   const copy = response.clone()
-  const cached = isIconFallback(copy) ? fallbackResponseForCache(copy) : copy
-  caches.open(CACHE).then((cache) => cache.put(request, cached)).catch(() => undefined)
+  caches.open(CACHE).then((cache) => cache.put(request, copy)).catch(() => undefined)
 }
 
 self.addEventListener('install', (event) => {
@@ -209,20 +193,6 @@ self.addEventListener('fetch', (event) => {
 
   if (url.origin !== self.location.origin) return
 
-  const isCategoryIconProxy = url.pathname.startsWith('/api/category-icon/')
-  if (isCategoryIconProxy) {
-    event.respondWith(
-      matchCachedIcon(request).then(
-        (cached) =>
-          cached ||
-          fetch(request).then((response) => {
-            cacheIconResponse(request, response)
-            return response
-          }),
-      ),
-    )
-    return
-  }
 
   if (url.pathname.startsWith('/api/')) return
 
@@ -237,7 +207,7 @@ self.addEventListener('fetch', (event) => {
             cacheResponse(request, safeResponse)
             return safeResponse
           }),
-      ),
+      ).then((response) => request.mode === 'navigate' ? navigationResponse(response) : response),
     )
     return
   }
@@ -251,25 +221,27 @@ self.addEventListener('fetch', (event) => {
   // 发布会替换 dist 并移除旧 hash 资源，因此 CACHE 版本必须随构建产物递增，
   // 否则旧 HTML 会引用已经不存在的 chunk。检测到新版本时会通知页面，由页面决定怎么提示。
   if (request.mode === 'navigate') {
+    // Only the app root shares the shell key; standalone documents keep their own URL.
+    const cacheKey = url.pathname === '/' || url.pathname === '/index.html' ? SHELL_URL : request
     event.respondWith(
-      matchCurrentCache(SHELL_URL).then((cached) => {
+      matchCurrentCache(cacheKey).then((cached) => {
         const network = fetch(request)
           .then(async (response) => {
             if (response.ok && response.headers.get('content-type')?.includes('text/html')) {
-              const changed = cached ? await shellChanged(cached, response) : true
-              cacheResponse(SHELL_URL, response)
+              const changed = cacheKey === SHELL_URL && (cached ? await shellChanged(cached, response) : true)
+              cacheResponse(cacheKey, response)
               if (cached && changed) notifyClients({ type: 'shell-updated' })
             }
             return response
           })
-          .catch(() => cached || caches.match('/'))
+          .catch(() => cached || matchCurrentCache(SHELL_URL))
 
         if (!cached) return network
 
         // 后台更新不能让请求悬空：respondWith 之后 waitUntil 保活。
         event.waitUntil(network.catch(() => undefined))
         return cached
-      }),
+      }).then(navigationResponse),
     )
   }
 })

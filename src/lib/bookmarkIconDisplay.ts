@@ -6,8 +6,11 @@ type BookmarkIconLike = {
   url: string
   icon?: string | null
   icon_blob?: string | null
+  icon_display?: 'image' | 'text' | 'empty'
   icon_cached?: boolean | number | null
   icon_source?: string | null
+  icon_revision?: string | null
+  icon_write_epoch?: number
 }
 
 export type IconStyleOptions = {
@@ -15,6 +18,10 @@ export type IconStyleOptions = {
   customBackground?: string
 }
 
+
+// 公开图标的浏览器 HTTP cache 无法被服务端远程撤回。发布缓存策略变更时递增该值，
+// 让新构建使用新 URL，不复用旧的 max-age 长缓存；edge key 仍由 Worker 的 ns 归一化管理。
+export const ICON_CACHE_URL_VERSION = '4'
 export function createIconVersion(input: string): string {
   let hash = 0
   for (let i = 0; i < input.length; i += 1) {
@@ -64,16 +71,18 @@ export function getBookmarkIconUrl(bookmark: BookmarkIconLike): string {
   if (/^data:image\//i.test(icon)) return icon
   if (/^https?:\/\//i.test(icon)) {
     return bookmark.icon_cached
-      ? `/api/icon/${bookmark.id}?v=${createIconVersion(`${bookmark.id}:${icon}:${bookmark.title}:${bookmark.url}`)}`
+      ? `/api/icon/${bookmark.id}?v=${createIconVersion(`${bookmark.id}:${icon}:${bookmark.title}:${bookmark.url}:${bookmark.icon_revision ?? bookmark.icon_write_epoch ?? 0}`)}&cv=${ICON_CACHE_URL_VERSION}`
       : icon
   }
-  if (bookmark.icon_cached) {
-    return `/api/icon/${bookmark.id}?v=${createIconVersion(`${bookmark.id}:${bookmark.title}:${bookmark.url}:cached`)}`
+  if (bookmark.icon_cached || bookmark.icon_display === 'image') {
+    return `/api/icon/${bookmark.id}?v=${createIconVersion(`${bookmark.id}:${bookmark.title}:${bookmark.url}:cached:${bookmark.icon_revision ?? bookmark.icon_write_epoch ?? 0}`)}&cv=${ICON_CACHE_URL_VERSION}`
   }
   return icon
 }
 
 export function hasBookmarkImageIcon(bookmark: BookmarkIconLike): boolean {
+  if (bookmark.icon_display === 'image') return true
+  if (bookmark.icon_display === 'empty' || bookmark.icon_display === 'text') return false
   const icon = bookmark.icon ?? ''
   const cachedIcon = bookmark.icon_blob ?? ''
   return Boolean(

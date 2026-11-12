@@ -37,6 +37,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
 
@@ -101,6 +102,11 @@ describe('SearchSpotlight', () => {
   })
 
   it('icon_cached 书签走 /api/icon 代理路径', async () => {
+    const fetch = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response('<svg/>', { headers: { 'content-type': 'image/svg+xml' } }))
+    vi.stubGlobal('fetch', fetch)
+    const TestURL = class extends URL {}
+    Object.assign(TestURL, { createObjectURL: () => 'blob:spotlight', revokeObjectURL: vi.fn() })
+    vi.stubGlobal('URL', TestURL)
     const items = [bookmark({
       id: 15,
       title: '缓存图标',
@@ -113,7 +119,8 @@ describe('SearchSpotlight', () => {
 
     await waitFor(() => {
       const option = screen.getAllByRole('option')[0]
-      expect(option.querySelector('img')?.getAttribute('src')).toContain('/api/icon/15?v=')
+      expect(option.querySelector('img')?.getAttribute('src')).toBe('blob:spotlight')
+      expect(fetch.mock.calls[0]?.[0]).toMatch(/^\/api\/icon\/15\?v=/)
     })
   })
 
