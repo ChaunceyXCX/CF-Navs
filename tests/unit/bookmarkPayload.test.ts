@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BookmarkUpsertReq } from '../../shared/types'
 import { parseBookmarkUpsertPayload } from '../../worker/lib/bookmarkPayload'
+import { iconBytesToDataUri } from '../../worker/lib/iconData'
 
 const validBody: BookmarkUpsertReq = {
   category_id: 1,
@@ -12,6 +13,11 @@ const validBody: BookmarkUpsertReq = {
   description: 'Code hosting',
   open_method: 1,
 }
+
+const validIconBlob = iconBytesToDataUri({
+  bytes: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+  contentType: 'image/png',
+})
 
 function expectRejected(body: unknown, message = 'invalid bookmark payload') {
   const result = parseBookmarkUpsertPayload(body as BookmarkUpsertReq)
@@ -97,6 +103,39 @@ describe('bookmark upsert payload parsing', () => {
     for (const method of [1, 2, 3] as const) {
       expect(parseBookmarkUpsertPayload({ ...validBody, open_method: method }).ok).toBe(true)
     }
+  })
+
+  it('normalizes an optional internal url when the field is present', () => {
+    const result = parseBookmarkUpsertPayload({
+      ...validBody,
+      internal_url: '192.168.1.10:8080',
+    })
+
+    expect(result.ok && result.value.internal_url).toBe('https://192.168.1.10:8080/')
+  })
+
+  it('clears the optional internal url when the form submits an empty value', () => {
+    const result = parseBookmarkUpsertPayload({ ...validBody, internal_url: '   ' })
+    expect(result.ok && result.value.internal_url).toBeNull()
+  })
+
+  it('rejects script-capable internal urls', () => {
+    expectRejected(
+      { ...validBody, internal_url: 'javascript:alert(1)' },
+      'internal url must start with http:// or https://',
+    )
+  })
+
+  it('sanitizes an uploaded icon blob before persisting it', () => {
+    const result = parseBookmarkUpsertPayload({ ...validBody, icon_blob: validIconBlob })
+    expect(result.ok && result.value.icon_blob).toBe(validIconBlob)
+  })
+
+  it('rejects non-image or malformed uploaded icon blobs', () => {
+    expectRejected(
+      { ...validBody, icon_blob: 'data:text/html;base64,PHNjcmlwdD4=' },
+      'invalid icon data',
+    )
   })
 
   it('rejects non-http bookmark urls with a distinct message', () => {

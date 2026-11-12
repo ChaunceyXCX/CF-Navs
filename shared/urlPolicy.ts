@@ -60,3 +60,14 @@ export function normalizeBookmarkUrl(value: unknown): string | null {
   // 免得把 `//example.com` 存成 `https:////example.com`。
   return parseAllowedUrl(`https://${trimmed}`)?.href ?? null
 }
+
+// 可选地址的归一化：空值表示「没有备用地址」，非空值必须能补成合法 http(s) URL。
+// 用于内网地址、导入备份里的历史字段与表单提交，避免各处重复写 trim 逻辑。
+export function normalizeOptionalBookmarkUrl(value: unknown): string | null {
+  if (value === null || value === undefined) return null
+  if (typeof value !== 'string') return null
+
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  return normalizeBookmarkUrl(trimmed)
+}

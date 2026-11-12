@@ -48,6 +48,7 @@ export function buildSearchIndex(
       [
         bookmark.title,
         bookmark.url,
+        bookmark.internal_url ?? '',
         bookmark.description ?? '',
         categoryTitles.get(bookmark.category_id) ?? '',
       ].join('\n').toLowerCase(),

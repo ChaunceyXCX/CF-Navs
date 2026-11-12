@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS bookmarks (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   category_id  INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
   title        TEXT NOT NULL,
-  url          TEXT NOT NULL,             -- 站点地址
+  url          TEXT NOT NULL,             -- 站点地址（外网/默认）
+  internal_url TEXT,                      -- 可选内网地址；公开数据也会下发，供点击时并行探测
   icon         TEXT,                      -- 图标 URL（cftc 直链 / 自动获取结果）
   icon_source  TEXT,                      -- 图标获取方式：direct/favicon_im/logo_surf/google/iconify/custom
   icon_background_color TEXT,             -- 单个图标背景色

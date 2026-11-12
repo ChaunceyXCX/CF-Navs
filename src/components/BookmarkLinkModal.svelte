@@ -1,9 +1,32 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
+  import { chooseFastestBookmarkUrl } from '../lib/bookmarkUrlRouter'
+
   type AsyncVoid<T = void> = T | Promise<T>
 
   export let title = ''
   export let url = ''
+  export let internalUrl: string | null = ''
   export let onClose: (() => AsyncVoid) | undefined = undefined
+
+  let resolvedUrl = url
+  let resolving = Boolean(internalUrl)
+
+  onMount(async () => {
+    if (!internalUrl) {
+      resolvedUrl = url
+      resolving = false
+      return
+    }
+
+    try {
+      resolvedUrl = await chooseFastestBookmarkUrl({ url, internal_url: internalUrl })
+    } catch {
+      resolvedUrl = url
+    } finally {
+      resolving = false
+    }
+  })
 
   function mountToBody(node: HTMLElement) {
     document.body.appendChild(node)
@@ -25,11 +48,14 @@
     <div class="link-modal-header">
       <strong>{title}</strong>
       <div class="link-modal-actions">
-        <a href={url} target="_blank" rel="noopener noreferrer">新窗口打开</a>
+        {#if resolving}<span class="link-modal-status">正在选择最快地址…</span>{/if}
+        <a href={resolvedUrl || url} target="_blank" rel="noopener noreferrer">新窗口打开</a>
         <button type="button" on:click={handleClose}>关闭</button>
       </div>
     </div>
-    <iframe src={url} title={title}></iframe>
+    {#if resolvedUrl && !resolving}
+      <iframe src={resolvedUrl} title={title}></iframe>
+    {/if}
   </div>
 </div>
 
@@ -78,6 +104,12 @@
     align-items: center;
     gap: 8px;
     flex: 0 0 auto;
+  }
+
+  .link-modal-status {
+    align-self: center;
+    color: #64748b;
+    font-size: 12px;
   }
 
   .link-modal-actions a,

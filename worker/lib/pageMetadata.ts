@@ -216,6 +216,26 @@ export function extractIconCandidates(html: string, baseUrl: string): string[] {
   return candidates
 }
 
+// 一些自建服务根页面只有 <meta http-equiv="refresh">，真正的 <link rel=icon>
+// 在跳转后的页面里。这里只解析 URL，由调用方决定是否再多抓一次，避免偷偷形成重定向链。
+export function extractMetaRefreshUrl(html: string, baseUrl: string): string | null {
+  for (const tag of html.match(/<meta\b[^>]*>/gi) ?? []) {
+    const httpEquiv = extractAttribute(tag, 'http-equiv')
+    if (!httpEquiv || httpEquiv.trim().toLowerCase() !== 'refresh') continue
+
+    const content = extractAttribute(tag, 'content')
+    if (!content) continue
+
+    const match = content.match(/\burl\s*=\s*(?:"([^"]*)"|'([^']*)'|([^;\s]+))/i)
+    const raw = (match?.[1] ?? match?.[2] ?? match?.[3])?.trim()
+    if (!raw) continue
+
+    return resolveHttpUrl(decodeHtmlEntities(raw), baseUrl)
+  }
+
+  return null
+}
+
 // ========== 编码处理 ==========
 
 // Response.text() 按 Fetch 规范恒用 UTF-8 解码，会忽略 Content-Type 里的 charset。

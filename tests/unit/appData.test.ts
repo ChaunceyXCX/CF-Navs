@@ -119,6 +119,16 @@ describe('app data adapters', () => {
     ])
   })
 
+  it('preserves optional internal urls in admin and public adapters', () => {
+    const withInternalUrl: Bookmark = {
+      ...bookmarkA,
+      internal_url: 'http://192.168.1.10:8080/',
+    }
+
+    expect(toAdminBookmarks([withInternalUrl])[0].internal_url).toBe('http://192.168.1.10:8080/')
+    expect(toPublicBookmark(withInternalUrl).internal_url).toBe('http://192.168.1.10:8080/')
+  })
+
   it('converts admin data into public data without private settings fields', () => {
     const publicData = adminDataToPublicData(
       { categories: [categoryA], bookmarks: [bookmarkA], settings },

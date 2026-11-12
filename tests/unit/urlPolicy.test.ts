@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isAllowedBookmarkUrl, normalizeBookmarkUrl } from '../../shared/urlPolicy'
+import { isAllowedBookmarkUrl, normalizeBookmarkUrl, normalizeOptionalBookmarkUrl } from '../../shared/urlPolicy'
 import { toBookmarkPayload } from '../../src/lib/adminFormAdapters'
 
 describe('bookmark url protocol allowlist', () => {
@@ -74,6 +74,17 @@ describe('imported bookmark url normalization', () => {
   })
 })
 
+describe('optional bookmark url normalization', () => {
+  it('normalizes non-empty optional URLs and keeps empty values as null', () => {
+    expect(normalizeOptionalBookmarkUrl('  ')).toBeNull()
+    expect(normalizeOptionalBookmarkUrl(null)).toBeNull()
+    expect(normalizeOptionalBookmarkUrl('192.168.1.10:8080')).toBe('https://192.168.1.10:8080/')
+    expect(normalizeOptionalBookmarkUrl('http://3965.chauncey.top:5999'))
+      .toBe('http://3965.chauncey.top:5999')
+    expect(normalizeOptionalBookmarkUrl('javascript:alert(1)')).toBeNull()
+  })
+})
+
 describe('admin form url normalization', () => {
   const baseForm = {
     category_id: 1,
@@ -96,6 +107,18 @@ describe('admin form url normalization', () => {
   it('leaves a well-formed url untouched', () => {
     expect(toBookmarkPayload({ ...baseForm, url: 'https://github.com/a?b=1' }).url)
       .toBe('https://github.com/a?b=1')
+  })
+
+  it('normalizes the optional internal url and carries parsed icon blobs', () => {
+    const payload = toBookmarkPayload({
+      ...baseForm,
+      url: 'https://example.com',
+      internal_url: '192.168.1.10:8080',
+      icon_blob: 'data:image/png;base64,iVBORw0KGgo=',
+    })
+
+    expect(payload.internal_url).toBe('https://192.168.1.10:8080/')
+    expect(payload.icon_blob).toBe('data:image/png;base64,iVBORw0KGgo=')
   })
 
   it('sends an unrescuable value through so the server owns the rejection', () => {

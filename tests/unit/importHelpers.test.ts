@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CATEGORY_IMPORT_CHUNK_SIZE } from '../../worker/lib/db/import'
+import { BOOKMARK_IMPORT_CHUNK_SIZE, CATEGORY_IMPORT_CHUNK_SIZE } from '../../worker/lib/db/import'
 import { chunkImportRows, normalizeImportCategory, normalizeImportBookmark, remapImportRecords } from '../../worker/lib/db/importHelpers'
 import type { Bookmark, Category } from '../../shared/types'
 
@@ -69,6 +69,7 @@ describe('category import batching', () => {
     const chunks = chunkImportRows(Array.from({ length: 15 }, (_, id) => ({ id })), CATEGORY_IMPORT_CHUNK_SIZE)
 
     expect(CATEGORY_IMPORT_CHUNK_SIZE * 7).toBeLessThanOrEqual(100)
+    expect(BOOKMARK_IMPORT_CHUNK_SIZE * 15).toBeLessThanOrEqual(100)
     expect(chunks.map((chunk) => chunk.length)).toEqual([14, 1])
   })
 })
@@ -147,6 +148,16 @@ describe('normalizeImportBookmark', () => {
     expect(output.icon_source).toBe('favicon_im')
     expect(output.icon_background_color).toBe('#333')
     expect(output.description).toBe('Code host')
+  })
+
+  it('normalizes an optional internal url without changing legacy backups', () => {
+    const output = normalizeImportBookmark({
+      ...base,
+      internal_url: '192.168.1.10:8080',
+    }, now)
+
+    expect(output.internal_url).toBe('https://192.168.1.10:8080/')
+    expect(normalizeImportBookmark(base, now)).not.toHaveProperty('internal_url')
   })
 })
 

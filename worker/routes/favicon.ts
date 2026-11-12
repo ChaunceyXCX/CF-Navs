@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { FaviconResp, SiteMetaResp } from '../../shared/types'
 import {
   extractIconCandidates,
+  extractMetaRefreshUrl,
   fetchPageHtml,
   fetchWithTimeout,
   hostnameFallbackTitle,
@@ -68,7 +69,18 @@ faviconRoutes.get('/fetch-favicon', async (c) => {
     let fallbackOrigin = targetUrl!.origin
     let fallbackHostname = targetUrl!.hostname
 
-    const page = await fetchPageHtml(targetUrl!.toString())
+    let page = await fetchPageHtml(targetUrl!.toString())
+
+    // 根页面可能是纯 meta refresh 跳转壳（LuCI/OpenWrt 等），图标声明在目标页里。
+    // 只跟一次，且沿用 resolveHttpUrl 的 SSRF 过滤，避免无限跳转与内网探测。
+    if (page?.html) {
+      const refreshUrl = extractMetaRefreshUrl(page.html, page.finalUrl)
+      if (refreshUrl && refreshUrl !== page.finalUrl) {
+        const refreshed = await fetchPageHtml(refreshUrl)
+        if (refreshed) page = refreshed
+      }
+    }
+
     if (page) {
       const finalUrl = new URL(page.finalUrl)
       fallbackOrigin = finalUrl.origin

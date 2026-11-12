@@ -7,6 +7,7 @@ import {
   extractHeadSection,
   extractIconCandidates,
   extractMetaContent,
+  extractMetaRefreshUrl,
   extractTitleTag,
   hostnameFallbackTitle,
   isBlockedFetchHostname,
@@ -238,6 +239,20 @@ describe('pageMetadata html extraction', () => {
       'https://example.com/favicon.ico',
       'https://cdn.example.com/a.png',
     ])
+  })
+
+  it('extracts a safe meta refresh target without opening an SSRF hole', () => {
+    const html = [
+      '<meta http-equiv="refresh" content="0; URL=cgi-bin/luci/" />',
+      '<meta http-equiv="refresh" content="0; url=http://169.254.169.254/latest/" />',
+    ].join('')
+
+    expect(extractMetaRefreshUrl(html, 'http://router.example.com:8080/'))
+      .toBe('http://router.example.com:8080/cgi-bin/luci/')
+    expect(extractMetaRefreshUrl(
+      '<meta http-equiv="refresh" content="0; url=http://169.254.169.254/latest/" />',
+      'https://example.com/',
+    )).toBeNull()
   })
 })
 

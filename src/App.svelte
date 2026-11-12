@@ -1364,7 +1364,12 @@
     {/if}
 
     {#if viewBookmark}
-      <BookmarkLinkModal title={viewBookmark.title} url={viewBookmark.url} onClose={closeBookmarkView} />
+      <BookmarkLinkModal
+        title={viewBookmark.title}
+        url={viewBookmark.url}
+        internalUrl={viewBookmark.internal_url ?? ''}
+        onClose={closeBookmarkView}
+      />
     {/if}
 
 

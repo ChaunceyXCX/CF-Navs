@@ -18,7 +18,9 @@ export type BookmarkFormValue = {
   category_id?: string | number
   title: string
   url: string
+  internal_url?: string
   icon: string
+  icon_blob?: string | null
   icon_source: string
   icon_background_color: string
   description: string

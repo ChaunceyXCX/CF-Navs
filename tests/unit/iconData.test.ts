@@ -5,6 +5,7 @@ import {
   fetchIcon,
   iconBytesToDataUri,
   isIconifyIconUrl,
+  sanitizeIconDataUri,
   shouldPersistIconBlob,
 } from '../../worker/lib/iconData'
 
@@ -22,6 +23,22 @@ describe('worker icon data helpers', () => {
     expect(response?.headers.get('Content-Type')).toBe('image/png')
     expect(response?.headers.get('Cache-Control')).toBe('public, max-age=60')
     expect(new Uint8Array(await response!.arrayBuffer())).toEqual(new Uint8Array([137, 80, 78, 71]))
+  })
+
+  it('sanitizes uploaded image data URIs and rejects unsafe payloads', () => {
+    const png = iconBytesToDataUri({
+      bytes: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+      contentType: 'image/png',
+    })
+
+    expect(sanitizeIconDataUri(png)).toBe(png)
+    expect(sanitizeIconDataUri('data:text/html;base64,PHNjcmlwdD4=')).toBeNull()
+    expect(sanitizeIconDataUri(`data:image/png;base64,${'A'.repeat(400_000)}`)).toBeNull()
+
+    const safeSvg = `data:image/svg+xml;base64,${btoa('<svg xmlns="http://www.w3.org/2000/svg"></svg>')}`
+    const unsafeSvg = `data:image/svg+xml;base64,${btoa('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')}`
+    expect(sanitizeIconDataUri(safeSvg)).toContain('data:image/svg+xml;base64,')
+    expect(sanitizeIconDataUri(unsafeSvg)).toBeNull()
   })
 
   it('recognizes Iconify URLs and avoids persisting Iconify blobs', () => {

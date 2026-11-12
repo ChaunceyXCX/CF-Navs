@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   defaultIconifyIcon,
+  directFaviconIcon,
   faviconImIcon,
+  getHost,
   getHostname,
+  getIconCandidates,
   googleIcon,
+  hasExplicitPort,
   iconifyIcon,
   iconifyNameFromUrl,
   iconifyProxyIcon,
@@ -31,5 +35,18 @@ describe('icon helpers', () => {
   it('derives simple-icons candidates from bookmark domains', () => {
     expect(defaultIconifyIcon('https://github.com/openai')).toBe('https://api.iconify.design/simple-icons/github.svg')
     expect(defaultIconifyIcon('invalid')).toBe('')
+  })
+
+  it('keeps custom ports for direct favicon candidates', () => {
+    const url = 'http://3965.chauncey.top:5999'
+
+    expect(getHost(url)).toBe('3965.chauncey.top:5999')
+    expect(hasExplicitPort(url)).toBe(true)
+    expect(directFaviconIcon(url)).toBe('http://3965.chauncey.top:5999/favicon.ico')
+    expect(getIconCandidates(url, 'LuCI')[0]).toMatchObject({
+      source: 'direct',
+      url: 'http://3965.chauncey.top:5999/favicon.ico',
+    })
+    expect(defaultIconifyIcon(url)).toBe('')
   })
 })

@@ -56,6 +56,7 @@ export function filterAdminBookmarks(
     return (
       bookmark.title.toLowerCase().includes(normalizedSearch) ||
       bookmark.url.toLowerCase().includes(normalizedSearch) ||
+      (bookmark.internal_url ?? '').toLowerCase().includes(normalizedSearch) ||
       categoryTitle.includes(normalizedSearch)
     )
   })

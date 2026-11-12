@@ -14,6 +14,7 @@ import {
   iconBytesToDataUri,
   iconBytesToResponse,
   isIconifyIconUrl,
+  sanitizeIconDataUri,
 } from '../lib/iconData'
 import { iconifyUrlFromParams, normalizeIconifySearchQuery, searchIconifyIcons } from '../lib/iconifySearch'
 import {
@@ -191,8 +192,13 @@ iconRoutes.get('/icon/:id', async (c) => {
     }
 
     if (bookmark.icon.startsWith('data:image/')) {
-      await setIconBlob(c.env.DB, id, bookmark.icon)
-      const response = dataUriToResponse(bookmark.icon, successCache)
+      const safeIcon = sanitizeIconDataUri(bookmark.icon)
+      if (!safeIcon) {
+        await setIconBlob(c.env.DB, id, null)
+        return cachedFallbackIconResponse(c, cacheKey, bookmark.title, bookmark.url, fallbackCache)
+      }
+      await setIconBlob(c.env.DB, id, safeIcon)
+      const response = dataUriToResponse(safeIcon, successCache)
       if (!response) return cachedFallbackIconResponse(c, cacheKey, bookmark.title, bookmark.url, fallbackCache)
       cacheResponse(c, cacheKey, response)
       return response

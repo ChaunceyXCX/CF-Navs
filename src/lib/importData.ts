@@ -2,7 +2,7 @@ import type { BackupData, Bookmark, Category, ImportReq, Settings } from '../../
 import { normalizeCategories } from '../../shared/categoryHierarchy'
 import { decodeHtmlEntities } from '../../shared/decodeHtmlEntities'
 import { isRecord } from './guards'
-import { iconifyIcon } from './icons'
+import { directFaviconIcon, hasExplicitPort, iconifyIcon } from './icons'
 
 export type ImportSource = 'cf-navs' | 'sunpanel' | 'browser-html'
 
@@ -31,8 +31,10 @@ function normalizeUrl(value: unknown): string {
 
 function faviconForUrl(url: string): string {
   try {
+    // 带非默认端口时 favicon.im 查的是 80/443 的同名域，优先用站点自己的 /favicon.ico。
+    if (hasExplicitPort(url)) return directFaviconIcon(url)
     const { hostname } = new URL(url)
-    return hostname ? `https://favicon.im/${hostname}?larger=true` : ''
+    return hostname ? `https://favicon.im/${hostname.replace(/^www\./, '')}?larger=true` : ''
   } catch {
     return ''
   }

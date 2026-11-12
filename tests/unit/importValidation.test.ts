@@ -37,6 +37,25 @@ describe('import payload validation', () => {
     })
   })
 
+  it('normalizes optional internal urls in imported backups', () => {
+    const result = validateImportPayload({
+      ...validPayload,
+      bookmarks: [{ ...validPayload.bookmarks[0], internal_url: '192.168.1.10:8080' }],
+    })
+
+    expect(result.ok && result.payload.bookmarks[0].internal_url).toBe('https://192.168.1.10:8080/')
+  })
+
+  it('drops unsafe icon blobs from imported backups', () => {
+    const unsafeSvg = `data:image/svg+xml;base64,${btoa('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')}`
+    const result = validateImportPayload({
+      ...validPayload,
+      bookmarks: [{ ...validPayload.bookmarks[0], icon_blob: unsafeSvg }],
+    })
+
+    expect(result.ok && result.payload.bookmarks[0].icon_blob).toBeNull()
+  })
+
   it('rejects invalid shapes with route-compatible messages', () => {
     expect(validateImportPayload(null)).toEqual({ ok: false, message: 'invalid import payload' })
     expect(validateImportPayload({ categories: [], bookmarks: null })).toEqual({

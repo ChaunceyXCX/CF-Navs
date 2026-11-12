@@ -13,7 +13,9 @@ import {
 export const emptyBookmarkForm: BookmarkFormValue = {
   title: '',
   url: '',
+  internal_url: '',
   icon: '',
+  icon_blob: '',
   icon_source: '',
   icon_background_color: '',
   description: '',
@@ -32,7 +34,9 @@ export function createBookmarkFormValue(
     category_id: value?.category_id ?? fallbackCategoryId,
     title: value?.title ?? '',
     url: value?.url ?? '',
+    internal_url: value?.internal_url ?? '',
     icon: value?.icon ?? '',
+    icon_blob: value?.icon_blob ?? '',
     icon_source: value?.icon_source ?? '',
     icon_background_color: value?.icon_background_color ?? '',
     description: value?.description ?? '',
@@ -132,13 +136,18 @@ export function buildBookmarkSubmitPayload(form: BookmarkFormValue, iconifyName:
       ? 'iconify'
       : form.icon_source || 'custom'
     : ''
+  // 前端解析出的图标同时放在 icon 和 icon_blob；用户后来改选别的图标时不能继续上传旧 blob。
+  const iconBlob = (form.icon_blob ?? '').trim()
+  const effectiveIconBlob = iconBlob && iconBlob === submitIcon ? iconBlob : ''
 
   return {
     ...form,
     title: form.title.trim(),
     url: form.url.trim(),
+    internal_url: (form.internal_url ?? '').trim(),
     icon: submitIcon,
     icon_source: submitIconSource,
+    icon_blob: effectiveIconBlob,
     icon_background_color: form.icon_background_color.trim(),
     description: form.description.trim(),
   }

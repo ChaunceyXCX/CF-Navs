@@ -10,6 +10,7 @@
   import { setPageScrollLocked } from '../lib/pageScrollLock'
   import { publicStore } from '../lib/stores'
   import { api } from '../lib/api'
+  import { openBookmarkUrl } from '../lib/bookmarkUrlRouter'
   import SpotlightBookmarkIcon from './SpotlightBookmarkIcon.svelte'
 
   export let open = false
@@ -80,12 +81,8 @@
       onViewBookmark?.(bookmark)
       return
     }
-    if (bookmark.open_method === 2) {
-      onClose?.()
-      if (typeof window !== 'undefined') window.location.assign(bookmark.url)
-      return
-    }
-    if (typeof window !== 'undefined') window.open(bookmark.url, '_blank', 'noopener,noreferrer')
+
+    void openBookmarkUrl(bookmark, bookmark.open_method === 2 ? 'same_tab' : 'new_tab')
     onClose?.()
   }
 

@@ -22,6 +22,7 @@
     deriveBookmarkCardIconBase,
     deriveBookmarkCardIconUrl,
   } from '../lib/bookmarkCardIconState'
+  import { openBookmarkUrl } from '../lib/bookmarkUrlRouter'
   import { observeIconVisibility } from '../lib/iconVisibility'
   import {
     fetchAndCacheBookmarkIconUrl,
@@ -307,14 +308,24 @@
       event.preventDefault()
       return
     }
+    // 保留浏览器原生的 Ctrl/Cmd/Shift/Alt + 点击与中键打开行为。
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return
 
     // Register click both locally and on server
     publicStore.incrementClick(bookmark.id)
     void api.public.registerClick(bookmark.id)
 
-    if (!shouldOpenBookmarkModal({ sortMode, openMethod: bookmark.open_method })) return
+    if (shouldOpenBookmarkModal({ sortMode, openMethod: bookmark.open_method })) {
+      event.preventDefault()
+      modalOpen = true
+      return
+    }
+
+    // 没有内网备用地址时沿用 <a href> 的原生跳转，避免多一次 fetch 和弹窗拦截风险。
+    if (!bookmark.internal_url) return
+
     event.preventDefault()
-    modalOpen = true
+    void openBookmarkUrl(bookmark, bookmark.open_method === 2 ? 'same_tab' : 'new_tab')
   }
 
   function closeModal() {
@@ -469,7 +480,12 @@
   {/if}
 
   {#if modalOpen}
-    <BookmarkLinkModal title={bookmark.title} url={bookmark.url} onClose={closeModal} />
+    <BookmarkLinkModal
+      title={bookmark.title}
+      url={bookmark.url}
+      internalUrl={bookmark.internal_url ?? ''}
+      onClose={closeModal}
+    />
   {/if}
 </div>
 

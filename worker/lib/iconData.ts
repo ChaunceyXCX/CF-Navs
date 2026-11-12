@@ -210,6 +210,36 @@ export function dataUriToResponse(dataUri: string, cacheControl: string): Respon
   }
 }
 
+// 前端解析/本机选择得到的图标会通过书签写入接口上传。这里做权威校验：
+// 只接受 image/* data URI，按真实字节重新嗅探 MIME，并重编码为规范 data URI。
+export function sanitizeIconDataUri(value: string): string | null {
+  const match = value.trim().match(/^data:([^;,]+);base64,(.+)$/i)
+  if (!match) return null
+
+  const declared = (match[1] || '').toLowerCase()
+  if (!declared.startsWith('image/')) return null
+  if (match[2].length > Math.ceil((MAX_ICON_SIZE * 4) / 3) + 4) return null
+
+  try {
+    const bytes = Uint8Array.from(atob(match[2]), (char) => char.charCodeAt(0))
+    if (bytes.byteLength === 0 || bytes.byteLength > MAX_ICON_SIZE) return null
+
+    const contentType = sniffImageContentType(bytes, declared)
+    if (!contentType) return null
+
+    // SVG 作为图片加载时多数浏览器不跑脚本，但 /api/icon/:id 也可以被直接打开。
+    // 明确拒绝脚本与内联事件，避免把上传通道变成存储型 SVG 执行面。
+    if (contentType === 'image/svg+xml') {
+      const svg = decodeTextPrefix(bytes, bytes.byteLength).toLowerCase()
+      if (/<script|javascript:|\son[a-z]+\s*=/i.test(svg)) return null
+    }
+
+    return `data:${contentType};base64,${bytesToBase64(bytes)}`
+  } catch {
+    return null
+  }
+}
+
 function normalizeIconifyPair(prefix: string, name: string): boolean {
   const normalizedPrefix = prefix.trim().toLowerCase()
   const normalizedName = name.trim().toLowerCase().replace(/\.svg$/i, '')

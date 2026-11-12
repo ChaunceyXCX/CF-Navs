@@ -1,6 +1,7 @@
 import type { Bookmark, Category, ImportReq } from '../../shared/types'
 import { normalizeCategoryParentId, validateCategoryHierarchy } from '../../shared/categoryHierarchy'
-import { normalizeBookmarkUrl } from '../../shared/urlPolicy'
+import { normalizeBookmarkUrl, normalizeOptionalBookmarkUrl } from '../../shared/urlPolicy'
+import { sanitizeIconDataUri } from './iconData'
 
 export type ImportValidationResult =
   | { ok: true; payload: ImportReq; droppedBookmarks: number }
@@ -40,6 +41,7 @@ function isValidBookmark(value: unknown): value is Bookmark {
     value.title.trim().length > 0 &&
       typeof value.url === 'string' &&
     value.url.trim().length > 0 &&
+    (value.internal_url === null || value.internal_url === undefined || typeof value.internal_url === 'string') &&
     (value.description_mode === null || value.description_mode === undefined || value.description_mode === 'always' || value.description_mode === 'hover' || value.description_mode === 'hidden') &&
     (value.is_private === undefined || value.is_private === true || value.is_private === false || value.is_private === 0 || value.is_private === 1)
   )
@@ -99,7 +101,37 @@ export function validateImportPayload(body: unknown): ImportValidationResult {
   const normalizedBookmarks: Bookmark[] = []
   for (const bookmark of body.bookmarks) {
     const url = normalizeBookmarkUrl(bookmark.url)
-    if (url) normalizedBookmarks.push(url === bookmark.url ? bookmark : { ...bookmark, url })
+    if (!url) continue
+
+    const rawInternalUrl = (bookmark as unknown as Record<string, unknown>).internal_url
+    const internalUrl = normalizeOptionalBookmarkUrl(rawInternalUrl)
+    const hasInternalUrlField = Object.prototype.hasOwnProperty.call(bookmark, 'internal_url')
+    const needsInternalRewrite = hasInternalUrlField && internalUrl !== rawInternalUrl
+
+    const rawIconBlob = (bookmark as unknown as Record<string, unknown>).icon_blob
+    const sanitizedIconBlob = typeof rawIconBlob === 'string' && rawIconBlob.trim()
+      ? sanitizeIconDataUri(rawIconBlob.trim())
+      : null
+    const needsIconBlobRewrite = typeof rawIconBlob === 'string'
+      && rawIconBlob.trim().length > 0
+      && sanitizedIconBlob !== rawIconBlob
+
+    // 旧备份里没有需要改写的字段时保持对象身份，避免 import 结果无谓变化。
+    if (url === bookmark.url && !needsInternalRewrite && !needsIconBlobRewrite) {
+      normalizedBookmarks.push(bookmark)
+      continue
+    }
+
+    const next: Bookmark = url === bookmark.url ? { ...bookmark } : { ...bookmark, url }
+    if (internalUrl) {
+      next.internal_url = internalUrl
+    } else {
+      delete next.internal_url
+    }
+    if (typeof rawIconBlob === 'string' && rawIconBlob.trim()) {
+      next.icon_blob = sanitizedIconBlob
+    }
+    normalizedBookmarks.push(next)
   }
   const droppedBookmarks = body.bookmarks.length - normalizedBookmarks.length
 

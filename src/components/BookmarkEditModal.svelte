@@ -10,6 +10,8 @@
     type LogoSurfColorScheme,
   } from '../lib/icons'
   import { api, getErrorMessage, iconifyApi } from '../lib/api'
+  import { normalizeOptionalBookmarkUrl } from '../../shared/urlPolicy'
+  import { fileToImageDataUri, parseInternalBookmarkIcon } from '../lib/internalBookmarkIcon'
   import {
     createBookmarkTitleState,
     resolveBookmarkTitleError,
@@ -41,6 +43,7 @@
   } from '../lib/bookmarkIconifyController'
   import BookmarkBaseFields from './BookmarkBaseFields.svelte'
   import BookmarkCustomIconField from './BookmarkCustomIconField.svelte'
+  import InternalBookmarkIconField from './InternalBookmarkIconField.svelte'
   import BookmarkIconCandidatePicker from './BookmarkIconCandidatePicker.svelte'
   import BookmarkModalActions from './BookmarkModalActions.svelte'
   import BookmarkModalHeader from './BookmarkModalHeader.svelte'
@@ -72,6 +75,10 @@
   let iconifySearchTimer: ReturnType<typeof setTimeout> | null = null
   let iconifySearchAbortController: AbortController | null = null
   let titleLookupState: BookmarkTitleState = createBookmarkTitleState()
+  let internalIconStatus = ''
+  let internalIconLoading = false
+  let internalIconRequestId = 0
+  let internalIconLastUrl = ''
 
   // 当前链接下的图标候选
   let candidates: IconCandidate[] = []
@@ -83,6 +90,10 @@
     formKey = nextKey
     faviconError = ''
     candidateError = ''
+    internalIconStatus = ''
+    internalIconLoading = false
+    internalIconRequestId += 1
+    internalIconLastUrl = ''
     const fallbackCategoryId = categories[0]?.id
     form = createBookmarkFormValue(value, fallbackCategoryId)
     selectedLogoSchemeName = findLogoSchemeName(form.icon) ?? DEFAULT_LOGO_SURF_SCHEME.name
@@ -221,6 +232,67 @@
     }
   }
 
+  function applyResolvedInternalIcon(dataUri: string, statusText: string) {
+    form.icon = dataUri
+    form.icon_source = 'custom'
+    form.icon_blob = dataUri
+    candidateError = ''
+    faviconError = ''
+    internalIconStatus = statusText
+  }
+
+  async function resolveInternalIconFromUrl(force = false): Promise<void> {
+    const targetUrl = normalizeOptionalBookmarkUrl(form.internal_url ?? '')
+    if (!targetUrl) {
+      internalIconStatus = ''
+      internalIconLastUrl = ''
+      return
+    }
+
+    if (!force && targetUrl === internalIconLastUrl && (form.icon_blob ?? '').trim()) return
+
+    const requestId = ++internalIconRequestId
+    internalIconLoading = true
+    internalIconStatus = '正在从内网地址解析图标…'
+
+    try {
+      const result = await parseInternalBookmarkIcon(targetUrl)
+      if (requestId !== internalIconRequestId) return
+
+      if (result) {
+        applyResolvedInternalIcon(result.dataUri, '内网图标已解析，保存后写入后端缓存。')
+        internalIconLastUrl = targetUrl
+      } else {
+        internalIconLastUrl = ''
+        internalIconStatus = '自动解析失败（可能是 CORS、证书或登录页限制），请选择图标文件。'
+      }
+    } catch (error) {
+      if (requestId !== internalIconRequestId) return
+      internalIconLastUrl = ''
+      internalIconStatus = `图标解析失败：${getErrorMessage(error)}；请选择图标文件。`
+    } finally {
+      if (requestId === internalIconRequestId) internalIconLoading = false
+    }
+  }
+
+  async function handleInternalIconFile(file: File): Promise<void> {
+    const requestId = ++internalIconRequestId
+    internalIconLoading = true
+    internalIconStatus = '正在读取图标文件…'
+
+    try {
+      const dataUri = await fileToImageDataUri(file)
+      if (requestId !== internalIconRequestId) return
+      applyResolvedInternalIcon(dataUri, '已选择图标文件，保存后写入后端缓存。')
+      internalIconLastUrl = normalizeOptionalBookmarkUrl(form.internal_url ?? '') ?? ''
+    } catch (error) {
+      if (requestId !== internalIconRequestId) return
+      internalIconStatus = getErrorMessage(error)
+    } finally {
+      if (requestId === internalIconRequestId) internalIconLoading = false
+    }
+  }
+
   function selectLogoColorScheme(scheme: LogoSurfColorScheme) {
     if (!form.url.trim()) return
     selectedLogoSchemeName = scheme.name
@@ -328,6 +400,7 @@
           bind:categoryId={form.category_id}
           bind:title={form.title}
           bind:url={form.url}
+          bind:internalUrl={form.internal_url}
           bind:openMethod={form.open_method}
           bind:isPrivate={form.is_private}
           bind:description={form.description}
@@ -336,6 +409,7 @@
           {loading}
           titleLoading={titleLookupState.loading}
           onUrlBlur={handleUrlBlur}
+          onInternalUrlBlur={() => void resolveInternalIconFromUrl(false)}
         />
 
         <BookmarkIconCandidatePicker
@@ -393,6 +467,15 @@
           {faviconError}
           onIconInput={markCustomIconInput}
           onOpenImageHost={openImageHost}
+        />
+
+        <InternalBookmarkIconField
+          internalUrl={form.internal_url ?? ''}
+          loading={internalIconLoading}
+          disabled={loading}
+          status={internalIconStatus}
+          onParse={() => void resolveInternalIconFromUrl(true)}
+          onFileSelected={(file) => void handleInternalIconFile(file)}
         />
 
         {#if error}

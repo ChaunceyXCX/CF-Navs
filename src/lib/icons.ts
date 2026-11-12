@@ -45,6 +45,32 @@ export function getHostname(url: string): string {
   }
 }
 
+// host 保留非默认端口；favicon.im 这类公共服务不认端口，但站点自己的 /favicon.ico 认。
+export function getHost(url: string): string {
+  try {
+    const u = new URL(url)
+    return u.host.replace(/^www\./, '')
+  } catch {
+    return ''
+  }
+}
+
+export function directFaviconIcon(url: string): string {
+  try {
+    return `${new URL(url).origin}/favicon.ico`
+  } catch {
+    return ''
+  }
+}
+
+export function hasExplicitPort(url: string): boolean {
+  try {
+    return Boolean(new URL(url).port)
+  } catch {
+    return false
+  }
+}
+
 export function faviconImIcon(url: string): string {
   const hostname = getHostname(url)
   return hostname ? `https://favicon.im/${hostname}?larger=true` : ''
@@ -122,7 +148,9 @@ export function isIconifyIconUrl(value: string): boolean {
 export function defaultIconifyIcon(url: string): string {
   const hostname = getHostname(url)
   const brand = hostname.split('.')[0]?.replace(/[^a-z0-9-]/gi, '').toLowerCase()
-  return brand ? iconifyIcon(`simple-icons:${brand}`) : ''
+  // 纯数字子域（自建服务常写成 3965.example.com:5999）不是品牌名，查 simple-icons 只会得到空图。
+  if (!brand || /^\d+$/.test(brand)) return ''
+  return iconifyIcon(`simple-icons:${brand}`)
 }
 
 function escapeSvgText(value: string): string {
@@ -289,8 +317,8 @@ function logoTextElements(
 }
 
 export function logoSurfIcon(title: string, url: string, scheme: LogoSurfColorScheme = DEFAULT_LOGO_SURF_SCHEME): string {
-  const hostname = getHostname(url) || 'NAV'
-  const text = title.trim() || hostname
+  const host = getHost(url) || 'NAV'
+  const text = title.trim() || host
   const size = 512
   const radius = 80
   const layout = getLogoTextLayout(text, size)
@@ -321,7 +349,20 @@ export function getIconCandidates(url: string, title: string): IconCandidate[] {
   if (!hostname) return []
 
   const iconify = defaultIconifyIcon(url)
-  const candidates: IconCandidate[] = [
+  const candidates: IconCandidate[] = []
+
+  if (hasExplicitPort(url)) {
+    const directIcon = directFaviconIcon(url)
+    if (directIcon) {
+      candidates.push({
+        source: 'direct',
+        label: '站点 Favicon',
+        url: directIcon,
+      })
+    }
+  }
+
+  candidates.push(
     {
       source: 'favicon_im',
       label: 'Favicon.im',
@@ -337,7 +378,7 @@ export function getIconCandidates(url: string, title: string): IconCandidate[] {
       label: 'Google',
       url: googleIcon(url),
     },
-  ]
+  )
 
   if (iconify) {
     candidates.push({

@@ -61,7 +61,11 @@ describe('site meta route wiring', () => {
     const modal = readFileSync('src/components/BookmarkEditModal.svelte', 'utf8')
 
     expect(baseFields).toContain('on:blur={() => onUrlBlur?.()}')
+    expect(baseFields).toContain('bind:value={internalUrl}')
+    expect(baseFields).toContain('on:blur={() => onInternalUrlBlur?.()}')
     expect(modal).toContain('createBookmarkTitleState(titleLookupState.requestId)')
     expect(modal).toContain('onUrlBlur={handleUrlBlur}')
+    expect(modal).toContain('bind:internalUrl={form.internal_url}')
+    expect(modal).toContain('<InternalBookmarkIconField')
   })
 })

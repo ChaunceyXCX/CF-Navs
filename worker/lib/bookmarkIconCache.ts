@@ -1,5 +1,5 @@
 import type { IconSource } from '../../shared/types'
-import { fetchIcon, iconBytesToDataUri, shouldPersistIconBlob } from './iconData'
+import { fetchIcon, iconBytesToDataUri, sanitizeIconDataUri, shouldPersistIconBlob } from './iconData'
 import { setIconBlob } from './db'
 
 export interface BookmarkIconCacheResult {
@@ -21,8 +21,13 @@ export async function cacheBookmarkIconBlob(
   }
 
   if (iconUrl.startsWith('data:image/')) {
-    await setIconBlob(db, bookmarkId, iconUrl)
-    return { iconBlob: iconUrl, reuseExisting: false, wrote: true }
+    const safeIcon = sanitizeIconDataUri(iconUrl)
+    if (!safeIcon) {
+      await setIconBlob(db, bookmarkId, null)
+      return { iconBlob: null, reuseExisting: false, wrote: true }
+    }
+    await setIconBlob(db, bookmarkId, safeIcon)
+    return { iconBlob: safeIcon, reuseExisting: false, wrote: true }
   }
 
   if (!shouldPersistIconBlob(iconUrl, iconSource)) {

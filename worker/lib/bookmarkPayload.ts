@@ -4,7 +4,8 @@
 // 任何一次单边修改都会让新增和编辑的行为悄悄分叉。这不是美观问题，是正确性问题。
 
 import type { BookmarkUpsertReq, DescriptionDisplayMode, IconSource } from '../../shared/types'
-import { isAllowedBookmarkUrl } from '../../shared/urlPolicy'
+import { isAllowedBookmarkUrl, normalizeOptionalBookmarkUrl } from '../../shared/urlPolicy'
+import { sanitizeIconDataUri } from './iconData'
 import { isNonEmptyString, isOptionalString } from './routeHelpers'
 
 const DESCRIPTION_MODES: readonly DescriptionDisplayMode[] = ['always', 'hover', 'hidden']
@@ -15,7 +16,9 @@ export interface BookmarkWriteValue {
   category_id: number
   title: string
   url: string
+  internal_url?: string | null
   icon: string | null
+  icon_blob?: string | null
   icon_source: IconSource | null
   icon_background_color: string | null
   description: string | null
@@ -35,7 +38,9 @@ export function parseBookmarkUpsertPayload(body: BookmarkUpsertReq | null): Book
     body.category_id <= 0 ||
     !isNonEmptyString(body.title) ||
     !isNonEmptyString(body.url) ||
+    !isOptionalString(body.internal_url) ||
     !isOptionalString(body.icon) ||
+    !isOptionalString(body.icon_blob) ||
     !isOptionalString(body.icon_background_color) ||
     !isOptionalString(body.description) ||
     (body.description_mode !== undefined &&
@@ -55,13 +60,27 @@ export function parseBookmarkUpsertPayload(body: BookmarkUpsertReq | null): Book
     return { ok: false, message: 'bookmark url must start with http:// or https://' }
   }
 
+  const hasInternalUrl = Object.prototype.hasOwnProperty.call(body, 'internal_url')
+  const internalUrl = hasInternalUrl ? normalizeOptionalBookmarkUrl(body.internal_url) : undefined
+  if (hasInternalUrl && typeof body.internal_url === 'string' && body.internal_url.trim() && !internalUrl) {
+    return { ok: false, message: 'internal url must start with http:// or https://' }
+  }
+
+  const iconBlobInput = typeof body.icon_blob === 'string' ? body.icon_blob.trim() : ''
+  const sanitizedIconBlob = iconBlobInput ? sanitizeIconDataUri(iconBlobInput) : null
+  if (iconBlobInput && !sanitizedIconBlob) {
+    return { ok: false, message: 'invalid icon data' }
+  }
+
   return {
     ok: true,
     value: {
       category_id: body.category_id,
       title: body.title.trim(),
       url,
+      ...(hasInternalUrl ? { internal_url: internalUrl } : {}),
       icon: body.icon ?? null,
+      ...(sanitizedIconBlob ? { icon_blob: sanitizedIconBlob } : {}),
       icon_source: body.icon_source ?? null,
       icon_background_color: body.icon_background_color?.trim() || null,
       description: body.description ?? null,

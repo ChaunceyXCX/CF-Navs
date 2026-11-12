@@ -18,6 +18,7 @@ export interface Bookmark {
   category_id: number
   title: string
   url: string
+  internal_url?: string | null // 可选内网地址，点击时与 url 并行探测延迟
   icon: string | null
   icon_source: IconSource | null // 图标获取方式（direct/favicon_im/logo_surf/google/iconify/custom）
   icon_background_color: string | null
@@ -325,7 +326,9 @@ export interface BookmarkUpsertReq {
   category_id: number
   title: string
   url: string
+  internal_url?: string | null
   icon?: string | null
+  icon_blob?: string | null
   icon_source?: IconSource | null
   icon_background_color?: string | null
   description?: string | null

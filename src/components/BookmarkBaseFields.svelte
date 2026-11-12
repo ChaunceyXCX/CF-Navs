@@ -6,6 +6,7 @@
   export let categoryId: string | number | undefined = undefined
   export let title = ''
   export let url = ''
+  export let internalUrl = ''
   export let openMethod: BookmarkFormValue['open_method'] = 'new_tab'
   export let isPrivate = false
   export let description = ''
@@ -14,6 +15,7 @@
   export let loading = false
   export let titleLoading = false
   export let onUrlBlur: (() => void) | undefined = undefined
+  export let onInternalUrlBlur: (() => void) | undefined = undefined
 </script>
 
 <div class="field-compact field-label">
@@ -37,7 +39,7 @@
 </label>
 
 <label class="field-compact">
-  <span>链接地址</span>
+  <span>链接地址 <small class="field-hint">外网/默认</small></span>
   <input
     bind:value={url}
     type="url"
@@ -45,6 +47,17 @@
     required
     on:blur={() => onUrlBlur?.()}
   />
+</label>
+
+<label class="field-compact">
+  <span>内网地址 <small class="field-hint">可选</small></span>
+  <input
+    bind:value={internalUrl}
+    type="url"
+    placeholder="http://192.168.1.10:8080"
+    on:blur={() => onInternalUrlBlur?.()}
+  />
+  <small class="field-note">填写后点击卡片会并行探测两个地址，自动跳转延迟更低的一个。</small>
 </label>
 
 <label class="field-compact">
@@ -106,6 +119,12 @@
     color: #64748b;
     font-size: 11px;
     font-weight: 400;
+  }
+
+  .field-note {
+    color: #64748b;
+    font-size: 11px;
+    line-height: 1.45;
   }
 
   .checkbox-row {

@@ -1,5 +1,6 @@
 import type { Bookmark, Category } from '../../../shared/types'
 import { normalizeCategoryParentId } from '../../../shared/categoryHierarchy'
+import { normalizeOptionalBookmarkUrl } from '../../../shared/urlPolicy'
 
 // Pure helpers extracted from db/import.ts to enable unit testing
 // without D1 database dependencies.
@@ -20,11 +21,13 @@ export function normalizeImportCategory(c: Category, now: number): Category {
 export function normalizeImportBookmark(b: Bookmark, now: number): Bookmark {
   const openMethod = b.open_method === 2 ? 2 : b.open_method === 3 ? 3 : 1
   const hasPrivateFlag = Object.prototype.hasOwnProperty.call(b, 'is_private')
+  const internalUrl = normalizeOptionalBookmarkUrl((b as unknown as Record<string, unknown>).internal_url)
   return {
     id: b.id,
     category_id: b.category_id,
     title: b.title,
     url: b.url,
+    ...(internalUrl ? { internal_url: internalUrl } : {}),
     icon: b.icon ?? null,
     icon_source: (b as unknown as Record<string, Bookmark['icon_source']>).icon_source ?? null,
     icon_background_color: (b as unknown as Record<string, string | null | undefined>).icon_background_color ?? null,
