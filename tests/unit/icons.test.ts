@@ -47,6 +47,8 @@ describe('icon helpers', () => {
       source: 'direct',
       url: 'http://3965.chauncey.top:5999/favicon.ico',
     })
+    expect(getIconCandidates(url, 'LuCI').map((candidate) => candidate.url))
+      .toContain('http://3965.chauncey.top:5999/favicon.svg')
     expect(defaultIconifyIcon(url)).toBe('')
   })
 })

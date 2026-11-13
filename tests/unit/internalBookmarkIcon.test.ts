@@ -11,9 +11,10 @@ import {
 const PNG_BYTES = [137, 80, 78, 71, 13, 10, 26, 10]
 const PNG_DATA_URI = 'data:image/png;base64,iVBORw0KGgo='
 
-function textResponse(html: string, url: string): Response {
+function textResponse(html: string, url: string, status = 200): Response {
   return {
-    ok: true,
+    ok: status >= 200 && status < 300,
+    status,
     url,
     body: undefined,
     headers: { get: () => 'text/html' },
@@ -83,6 +84,27 @@ describe('parseInternalBookmarkIcon', () => {
       }
       if (url === loginUrl) {
         return textResponse('<link rel="shortcut icon" href="/luci-static/argon/favicon.png" />', loginUrl)
+      }
+      if (url === iconUrl) return imageResponse(iconUrl, PNG_BYTES)
+      return missingResponse()
+    }) as unknown as typeof fetch
+
+    const result = await parseInternalBookmarkIcon(rootUrl, { fetchImpl, timeoutMs: 1000 })
+
+    expect(result).toEqual({ dataUri: PNG_DATA_URI, iconUrl })
+  })
+
+  it('parses icon links from a 403 HTML login page behind a meta refresh', async () => {
+    const rootUrl = 'http://nas.local:8080/'
+    const loginUrl = 'http://nas.local:8080/cgi-bin/luci/'
+    const iconUrl = 'http://nas.local:8080/favicon.svg'
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === rootUrl) {
+        return textResponse('<meta http-equiv="refresh" content="0; URL=cgi-bin/luci/" />', rootUrl)
+      }
+      if (url === loginUrl) {
+        return textResponse('<link rel="icon" href="/favicon.svg" />', loginUrl, 403)
       }
       if (url === iconUrl) return imageResponse(iconUrl, PNG_BYTES)
       return missingResponse()

@@ -374,6 +374,7 @@ export interface BrowserSyncResp {
 // GET /api/fetch-favicon?url=...
 export interface FaviconResp {
   icon: string // 解析到的站点图标 URL；失败时回退 favicon.im
+  icon_data?: string | null // 服务端读取到的安全 data URI；前端可直接写入 icon_blob
 }
 
 // GET /api/fetch-site-meta?url=...

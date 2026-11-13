@@ -2,24 +2,31 @@
 
 <script lang="ts">
   interface Props {
+    externalUrl?: string
     internalUrl?: string
     loading?: boolean
     disabled?: boolean
     status?: string
-    onParse?: () => void
+    onParseExternal?: () => void
+    onParseInternal?: () => void
     onFileSelected?: (file: File) => void
   }
 
   let {
+    externalUrl = '',
     internalUrl = '',
     loading = false,
     disabled = false,
     status = '',
-    onParse,
+    onParseExternal,
+    onParseInternal,
     onFileSelected,
   }: Props = $props()
 
   let fileInput = $state<HTMLInputElement | null>(null)
+  const hasExternal = $derived(Boolean(externalUrl.trim()))
+  const hasInternal = $derived(Boolean(internalUrl.trim()))
+  const visible = $derived(hasExternal || hasInternal)
 
   function handleFileChange(event: Event) {
     const input = event.currentTarget as HTMLInputElement
@@ -29,20 +36,28 @@
   }
 </script>
 
-{#if internalUrl.trim()}
-  <div class="internal-icon-field">
-    <div class="internal-icon-heading">
-      <span>内网图标</span>
-      <small>录入内网地址后优先在浏览器侧解析；解析结果会随保存写入后端缓存。</small>
+{#if visible}
+  <div class="icon-resolver-field">
+    <div class="icon-resolver-heading">
+      <span>地址图标解析</span>
+      <small>优先由服务端/浏览器解析内外网图标；受 CORS、证书或混合内容限制时，可选择文件上传后端缓存。</small>
     </div>
-    <div class="internal-icon-actions">
+    <div class="icon-resolver-actions">
       <button
         type="button"
         class="ghost-button"
-        onclick={() => onParse?.()}
-        disabled={disabled || loading}
+        onclick={() => onParseExternal?.()}
+        disabled={disabled || loading || !hasExternal}
       >
-        {loading ? '解析中…' : '解析内网图标'}
+        解析外网图标
+      </button>
+      <button
+        type="button"
+        class="ghost-button"
+        onclick={() => onParseInternal?.()}
+        disabled={disabled || loading || !hasInternal}
+      >
+        解析内网图标
       </button>
       <button
         type="button"
@@ -56,18 +71,18 @@
         bind:this={fileInput}
         type="file"
         accept="image/*"
-        aria-label="选择内网图标文件"
+        aria-label="选择图标文件"
         onchange={handleFileChange}
       />
     </div>
     {#if status}
-      <small class="internal-icon-status">{status}</small>
+      <small class="icon-resolver-status">{status}</small>
     {/if}
   </div>
 {/if}
 
 <style>
-  .internal-icon-field {
+  .icon-resolver-field {
     grid-column: 1 / -1;
     display: grid;
     gap: 6px;
@@ -77,28 +92,28 @@
     background: #f8fafc;
   }
 
-  .internal-icon-heading {
+  .icon-resolver-heading {
     display: grid;
     gap: 2px;
     color: #334155;
     font-size: 13px;
   }
 
-  .internal-icon-heading small,
-  .internal-icon-status {
+  .icon-resolver-heading small,
+  .icon-resolver-status {
     color: #64748b;
     font-size: 11px;
     line-height: 1.45;
   }
 
-  .internal-icon-actions {
+  .icon-resolver-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
     align-items: center;
   }
 
-  .internal-icon-actions input[type='file'] {
+  .icon-resolver-actions input[type='file'] {
     display: none;
   }
 
@@ -118,12 +133,12 @@
     opacity: 0.6;
   }
 
-  :global([data-theme='dark']) .internal-icon-field {
+  :global([data-theme='dark']) .icon-resolver-field {
     border-color: rgba(148, 163, 184, 0.28);
     background: rgba(15, 23, 42, 0.45);
   }
 
-  :global([data-theme='dark']) .internal-icon-heading,
+  :global([data-theme='dark']) .icon-resolver-heading,
   :global([data-theme='dark']) .ghost-button {
     color: #e5eefb;
   }

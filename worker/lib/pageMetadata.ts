@@ -396,16 +396,19 @@ export async function fetchPageHtml(url: string): Promise<PageFetchResult | null
       },
     })
 
-    if (!response.ok) {
-      return { html: null, finalUrl }
-    }
-
     const contentType = response.headers.get('content-type')
     const normalizedContentType = contentType?.toLowerCase() ?? ''
     if (
       !normalizedContentType.includes('text/html') &&
       !normalizedContentType.includes('application/xhtml+xml')
     ) {
+      return { html: null, finalUrl }
+    }
+
+    // 登录墙常见 401/403 + HTML body，LuCI/OpenWrt 就是这种形态。
+    // 只要 Content-Type 确实是 HTML，就解析 <head> 里的图标声明；
+    // 不因非 2xx 丢掉整页，否则会误退到不带端口的 favicon.im。
+    if (!response.ok && response.status >= 500) {
       return { html: null, finalUrl }
     }
 

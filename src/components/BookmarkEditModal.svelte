@@ -12,8 +12,8 @@
     type LogoSurfColorScheme,
   } from '../lib/icons'
   import { api, getErrorMessage, iconifyApi } from '../lib/api'
-  import { normalizeOptionalBookmarkUrl } from '../../shared/urlPolicy'
-  import { fileToImageDataUri, parseInternalBookmarkIcon } from '../lib/internalBookmarkIcon'
+  import { fileToImageDataUri } from '../lib/internalBookmarkIcon'
+  import { resolveBookmarkIcon } from '../lib/bookmarkIconResolver'
   import {
     createBookmarkTitleState,
     resolveBookmarkTitleError,
@@ -99,7 +99,6 @@
   let internalIconStatus = $state('')
   let internalIconLoading = $state(false)
   let internalIconRequestId = $state(0)
-  let internalIconLastUrl = $state('')
 
   // 当前链接下的图标候选
   let candidates: IconCandidate[] = $state.raw([])
@@ -121,7 +120,6 @@
       internalIconStatus = ''
       internalIconLoading = false
       internalIconRequestId += 1
-      internalIconLastUrl = ''
       const fallbackCategoryId = categories[0]?.id
       form = createBookmarkFormValue(value, fallbackCategoryId)
       selectedLogoSchemeName = findLogoSchemeName(form.icon) ?? DEFAULT_LOGO_SURF_SCHEME.name
@@ -251,12 +249,13 @@
       url: form.url,
       title: form.title,
     })
-    if (!result.changed) return
+    if (result.changed) {
+      titleLookupState = result.state
+      if (result.task) void loadSiteTitle(result.task.url, result.task.requestId)
+    }
 
-    titleLookupState = result.state
-    if (!result.task) return
-
-    void loadSiteTitle(result.task.url, result.task.requestId)
+    // 外网/默认地址也走统一图标解析：优先服务端 data URI，再回退浏览器解析与 img 探测。
+    void resolveIconForUrl(form.url, '外网')
   }
 
   async function loadSiteTitle(url: string, requestId: number) {
@@ -281,7 +280,7 @@
     }
   }
 
-  function applyResolvedInternalIcon(dataUri: string, statusText: string) {
+  function applyResolvedIconData(dataUri: string, statusText: string) {
     form.icon = dataUri
     form.icon_source = 'custom'
     form.icon_blob = dataUri
@@ -290,34 +289,40 @@
     internalIconStatus = statusText
   }
 
-  async function resolveInternalIconFromUrl(force = false): Promise<void> {
-    const targetUrl = normalizeOptionalBookmarkUrl(form.internal_url ?? '')
-    if (!targetUrl) {
+  function applyResolvedIconUrl(iconUrl: string, statusText: string) {
+    form.icon = iconUrl
+    form.icon_source = 'custom'
+    form.icon_blob = ''
+    candidateError = ''
+    faviconError = ''
+    internalIconStatus = statusText
+  }
+
+  async function resolveIconForUrl(rawUrl: string, label: string): Promise<void> {
+    if (!rawUrl.trim()) {
       internalIconStatus = ''
-      internalIconLastUrl = ''
       return
     }
 
-    if (!force && targetUrl === internalIconLastUrl && (form.icon_blob ?? '').trim()) return
-
     const requestId = ++internalIconRequestId
     internalIconLoading = true
-    internalIconStatus = '正在从内网地址解析图标…'
+    internalIconStatus = `正在解析${label}图标…`
 
     try {
-      const result = await parseInternalBookmarkIcon(targetUrl)
+      const result = await resolveBookmarkIcon(rawUrl, {
+        fetchFavicon: (url) => api.bookmarks.fetchFavicon(url),
+      })
       if (requestId !== internalIconRequestId) return
 
-      if (result) {
-        applyResolvedInternalIcon(result.dataUri, '内网图标已解析，保存后写入后端缓存。')
-        internalIconLastUrl = targetUrl
+      if (result.dataUri) {
+        applyResolvedIconData(result.dataUri, result.message)
+      } else if (result.iconUrl) {
+        applyResolvedIconUrl(result.iconUrl, result.message)
       } else {
-        internalIconLastUrl = ''
-        internalIconStatus = '自动解析失败（可能是 CORS、证书或登录页限制），请选择图标文件。'
+        internalIconStatus = result.message
       }
     } catch (error) {
       if (requestId !== internalIconRequestId) return
-      internalIconLastUrl = ''
       internalIconStatus = `图标解析失败：${getErrorMessage(error)}；请选择图标文件。`
     } finally {
       if (requestId === internalIconRequestId) internalIconLoading = false
@@ -332,8 +337,7 @@
     try {
       const dataUri = await fileToImageDataUri(file)
       if (requestId !== internalIconRequestId) return
-      applyResolvedInternalIcon(dataUri, '已选择图标文件，保存后写入后端缓存。')
-      internalIconLastUrl = normalizeOptionalBookmarkUrl(form.internal_url ?? '') ?? ''
+      applyResolvedIconData(dataUri, '已选择图标文件，保存后写入后端缓存。')
     } catch (error) {
       if (requestId !== internalIconRequestId) return
       internalIconStatus = getErrorMessage(error)
@@ -459,7 +463,7 @@
           {loading}
           titleLoading={titleLookupState.loading}
           onUrlBlur={handleUrlBlur}
-          onInternalUrlBlur={() => void resolveInternalIconFromUrl(false)}
+          onInternalUrlBlur={() => void resolveIconForUrl(form.internal_url ?? '', '内网')}
         />
 
         <BookmarkIconCandidatePicker
@@ -520,11 +524,13 @@
         />
 
         <InternalBookmarkIconField
+          externalUrl={form.url}
           internalUrl={form.internal_url ?? ''}
           loading={internalIconLoading}
           disabled={loading}
           status={internalIconStatus}
-          onParse={() => void resolveInternalIconFromUrl(true)}
+          onParseExternal={() => void resolveIconForUrl(form.url, '外网')}
+          onParseInternal={() => void resolveIconForUrl(form.internal_url ?? '', '内网')}
           onFileSelected={(file) => void handleInternalIconFile(file)}
         />
 

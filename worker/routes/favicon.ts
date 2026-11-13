@@ -1,5 +1,7 @@
 import { Hono } from 'hono'
 import type { FaviconResp, SiteMetaResp } from '../../shared/types'
+import { ICON_MAX_BYTES } from '../../shared/iconDescriptor'
+import { iconBytesToDataUri, sanitizeIconDataUri, sniffImageContentType } from '../lib/iconData'
 import {
   extractIconCandidates,
   extractMetaRefreshUrl,
@@ -52,6 +54,31 @@ async function canFetchIcon(url: string): Promise<boolean> {
 
 function buildFaviconImFallback(hostname: string): string {
   return `https://favicon.im/${encodeURIComponent(hostname)}?larger=true`
+}
+
+// 把解析到的图标正文一并回给管理端，避免浏览器再被 CORS / mixed-content 挡一次。
+// 用 fetchWithTimeout 跟随安全重定向，并按真实字节嗅探 MIME 后做 SVG 脚本过滤。
+async function fetchIconDataUri(iconUrl: string): Promise<string | null> {
+  try {
+    const { response } = await fetchWithTimeout(iconUrl, {
+      headers: {
+        Accept: ICON_ACCEPT,
+        'User-Agent': 'Mozilla/5.0 (compatible; CF-Navs/1.0)',
+      },
+    }, 2500)
+    if (!response.ok) return null
+
+    const buffer = await response.arrayBuffer()
+    if (buffer.byteLength === 0 || buffer.byteLength > ICON_MAX_BYTES) return null
+
+    const bytes = new Uint8Array(buffer)
+    const contentType = sniffImageContentType(bytes, response.headers.get('content-type'))
+    if (!contentType) return null
+
+    return sanitizeIconDataUri(iconBytesToDataUri({ bytes, contentType }))
+  } catch {
+    return null
+  }
 }
 
 export const faviconRoutes = new Hono<HonoEnv>()
@@ -121,10 +148,11 @@ faviconRoutes.get('/fetch-favicon', async (c) => {
       setTimeout(() => resolve(buildFaviconImFallback(targetUrl!.hostname)), OVERALL_DEADLINE_MS),
     )
     const icon = await Promise.race([resolveIcon(), deadline])
-    return c.json(ok<FaviconResp>({ icon }))
+    const iconData = await fetchIconDataUri(icon)
+    return c.json(ok<FaviconResp>({ icon, icon_data: iconData }))
   } catch {
     // 任何异常也回退到 favicon.im 兜底，保证总能给出一个可用图标
-    return c.json(ok<FaviconResp>({ icon: buildFaviconImFallback(targetUrl.hostname) }))
+    return c.json(ok<FaviconResp>({ icon: buildFaviconImFallback(targetUrl.hostname), icon_data: null }))
   }
 })
 

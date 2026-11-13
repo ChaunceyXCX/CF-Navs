@@ -156,7 +156,17 @@ async function fetchHtml(
       signal: controller.signal,
       headers: { Accept: HTML_ACCEPT },
     })
-    if (!response.ok) return null
+    const contentType = response.headers?.get?.('content-type') ?? ''
+    const normalizedContentType = contentType.toLowerCase()
+    if (
+      !normalizedContentType.includes('text/html') &&
+      !normalizedContentType.includes('application/xhtml+xml')
+    ) return null
+
+    // 允许 401/403 登录页提供 HTML：LuCI 的 meta refresh 目标就是 403 HTML，
+    // 但 <head> 里仍有真实 <link rel=icon>。5xx 仍视为故障页。
+    if (!response.ok && (response.status ?? 0) >= 500) return null
+
     const html = await readLimitedText(response, MAX_HTML_BYTES)
     return { html, finalUrl: response.url || url }
   } catch {

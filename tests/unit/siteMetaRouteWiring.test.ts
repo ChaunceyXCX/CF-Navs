@@ -37,5 +37,7 @@ describe('site meta route wiring', () => {
     expect(modal).toContain('onUrlBlur={handleUrlBlur}')
     expect(modal).toContain('bind:internalUrl={form.internal_url}')
     expect(modal).toContain('<InternalBookmarkIconField')
+    expect(modal).toContain('onParseExternal')
+    expect(modal).toContain('onParseInternal')
   })
 })

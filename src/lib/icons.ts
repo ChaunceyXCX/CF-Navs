@@ -71,6 +71,25 @@ export function hasExplicitPort(url: string): boolean {
   }
 }
 
+// 带端口的自建服务不能只试 /favicon.ico：前端 SPA 常用 /favicon.svg，
+// LuCI 等则把图标放在主题目录里。这里给出不需 CORS 的 <img> 候选。
+const DIRECT_ICON_PATHS = [
+  '/favicon.ico',
+  '/favicon.svg',
+  '/favicon.png',
+  '/apple-touch-icon.png',
+  '/luci-static/argon/favicon.ico',
+]
+
+export function directIconCandidates(url: string): string[] {
+  try {
+    const origin = new URL(url).origin
+    return DIRECT_ICON_PATHS.map((path) => new URL(path, `${origin}/`).toString())
+  } catch {
+    return []
+  }
+}
+
 export function faviconImIcon(url: string): string {
   const hostname = getHostname(url)
   return hostname ? `https://favicon.im/${hostname}?larger=true` : ''
@@ -353,11 +372,11 @@ export function getIconCandidates(url: string, title: string): IconCandidate[] {
   const candidates: IconCandidate[] = []
 
   if (hasExplicitPort(url)) {
-    const directIcon = directFaviconIcon(url)
-    if (directIcon) {
+    for (const directIcon of directIconCandidates(url)) {
+      const path = new URL(directIcon).pathname
       candidates.push({
         source: 'direct',
-        label: '站点 Favicon',
+        label: path === '/favicon.ico' ? '站点 Favicon' : `站点 ${path}`,
         url: directIcon,
       })
     }
