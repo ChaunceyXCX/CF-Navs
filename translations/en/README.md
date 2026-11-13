@@ -22,6 +22,9 @@
   <a href="https://github.com/lbjxr/CF-Navs/fork">
     <img src="https://img.shields.io/badge/Fork_on_GitHub-181717?logo=github&logoColor=white" alt="Fork on GitHub">
   </a>
+  <a href="https://github.com/lbjxr/CF-Navs">
+    <img src="https://img.shields.io/badge/%E2%AD%90_Star-FFC107?style=flat" alt="Star this project on GitHub">
+  </a>
 </div>
 
 **Languages:** [简体中文](../../README.md)
@@ -58,7 +61,7 @@ Prefer a compact layout? The minimum width for desktop detail cards can be set t
 - **Private Categories**: Administrators can check the "Hidden from visitors (visible only to logged-in users)" box when editing a category in the backend. Unauthenticated visitors will not receive data for this category, its subcategories, or the bookmarks within them. Administrators can still view and manage them normally after logging in. Existing categories remain visible to visitors by default.
 - **Cross-Category Drag-and-Drop**: After logging in as an administrator, click "Reorder" on any category on the homepage to enter a unified reordering session. On PC, you can drag bookmarks into primary, secondary, or empty categories and adjust their positions. On mobile, you can select a target category via "Move to Category." Click "Save Reorder" at the bottom to save all category and order changes, or "Cancel" to discard the current session's modifications.
 - **Batch Movement**: When a large number of bookmarks need to be reorganized, you can filter and select multiple bookmarks in the backend, choose a target category, confirm the full path, and complete the move in one go—no need to open individual edit forms.
-- **Browser Bookmark Sync**: Enable "Browser Bookmark Sync" under "Settings → Site Settings", then install and log in with the Chrome/Edge extension from [`browser-extension`](../../browser-extension/). Once connected, the extension home page collapses the address, username, and password fields into a connection summary; click "Edit login information" to expand them, while an expired or missing session automatically expands the form. New browser bookmarks show a floating category picker in the current page's upper-right area; click the extension icon to show or hide the panel, and edit the title and URL before confirming the selected primary or secondary category. They receive the default icon candidate (`https://favicon.im/<hostname>?larger=true`). Unconfirmed bookmarks remain in a pending list where users can select, defer, or manually delete records; the list dynamically marks records that no longer exist in browser bookmarks. The extension does not create navigation categories based on browser folders; it only adds bookmarks one-way without deleting or overwriting existing navigation bookmarks.
+- **Browser Bookmark Sync**: Enable "Browser Bookmark Sync" under "Settings → Site Settings", then install and log in with the Chrome/Edge extension from [`browser-extension`](../../browser-extension/). Once connected, the extension home page collapses the address, username, and password fields into a connection summary; click "Edit login information" to expand them, while an expired or missing session automatically expands the form. New browser bookmarks show a floating category picker in the current page's upper-right area; click the extension icon to show or hide the panel, or click the surrounding webpage to dismiss it. Edit the title and URL before confirming the selected primary or secondary category. They receive the default icon candidate (`https://favicon.im/<hostname>?larger=true`). Unconfirmed bookmarks remain in a pending list where users can select, defer, or manually delete records; the list dynamically marks records that no longer exist in browser bookmarks. The extension does not create navigation categories based on browser folders; it only adds bookmarks one-way without deleting or overwriting existing navigation bookmarks. After updating an installed extension, reload it and refresh open webpages as described in the [extension update instructions](../../browser-extension/README.md#更新已安装的扩展).
 
 ## Interface Preview
 
@@ -112,10 +115,6 @@ cd CF-Navs/docker
 For deployment, reverse proxy, data migration, backup and recovery, and security boundaries, see
 [DOCKER_DEPLOY.md](../../docs/guides/DOCKER_DEPLOY.md).
 
-> ⚠️ 2026-10-23 Security Notice: Prebuilt images released before 2026-10-21 contain a
-> high-severity vulnerability in Node.js (the fixed version is v24.22.1). Before the next official image is released,
-> please follow Method B in the guide to build and deploy from source code. For details, see [DOCKER_DEPLOY.md](../../docs/guides/DOCKER_DEPLOY.md).
-
 CF-Navs requires the following Cloudflare resources:
 
 | Resource | Binding Name | Purpose |
@@ -128,11 +127,12 @@ CF-Navs requires the following Cloudflare resources:
 
 This method is suitable for users who want to operate entirely in the browser and avoid installing local tools. After Cloudflare links to your GitHub fork, it will automatically build and deploy from the `main` production branch. When synchronizing upstream updates later, please also update this branch.
 
-#### Step 1: Fork This Repository
+#### Step 1: Fork and Star This Repository
 
 [![Fork on GitHub](https://img.shields.io/badge/Fork-GitHub-181717?style=for-the-badge&logo=github)](https://github.com/lbjxr/CF-Navs/fork)
+[![Star this project on GitHub](https://img.shields.io/badge/%E2%AD%90_Star-FFC107?style=for-the-badge)](https://github.com/lbjxr/CF-Navs)
 
-Click the **"Fork on GitHub"** button above and give it a ⭐ Star!
+Click **Fork** to create your own copy, then click **Star** in the top-right corner of the repository page to follow updates.
 
 #### Step 2: Deploy to Cloudflare Workers
 

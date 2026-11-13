@@ -22,6 +22,9 @@
   <a href="https://github.com/lbjxr/CF-Navs/fork">
     <img src="https://img.shields.io/badge/Fork_on_GitHub-181717?logo=github&logoColor=white" alt="Fork on GitHub">
   </a>
+  <a href="https://github.com/lbjxr/CF-Navs">
+    <img src="https://img.shields.io/badge/%E2%AD%90_Star-FFC107?style=flat" alt="Star this project on GitHub">
+  </a>
 </div>
 
 **Languages:** [English](translations/en/README.md)
@@ -58,7 +61,7 @@
 - **私密分类**：管理员在后台编辑分类时勾选“访客不可见（仅登录可见）”。未登录访客不会收到该分类、其子分类及其中书签的数据；管理员登录后仍可正常查看和管理。旧分类默认保持访客可见。
 - **跨分类拖拽**：管理员登录后，在首页任意分类点击“排序”，进入统一排序会话。PC 可将书签拖入一级、二级或空分类并调整位置；手机可通过“移动到分类”选择目标。点击底部“保存排序”后统一保存分类和顺序，点击“取消”则放弃本次修改。
 - **批量移动**：大量书签需要重新归类时，在后台筛选、勾选多条书签，再选择目标分类并确认完整路径，一次完成移动，不必逐条打开编辑框。
-- **浏览器书签同步**：在后台“设置 → 站点设置”开启“浏览器书签同步”，安装 [`browser-extension`](browser-extension/) 中的 Chrome/Edge 扩展并登录。扩展首页在已连接导航页时默认收起地址、账号和密码输入框，点击“修改登录信息”即可展开修改；会话过期或尚未连接时自动展开。之后新增网页书签时会在当前页面右上角显示分类悬窗，可在确认前编辑标题和 URL；点击扩展图标可展示或隐藏面板，再同步到所选一级或二级分类，并按默认图标策略保存 `https://favicon.im/<hostname>?larger=true` 图标候选。未确认的收藏保留在待同步队列，可在待同步列表中勾选、暂缓或手动删除；列表会动态标记已经不在浏览器收藏中的记录。扩展不按浏览器收藏夹文件夹创建导航分类，只做“浏览器 → 导航页”单向新增，不删除或反向覆盖导航页已有书签。
+- **浏览器书签同步**：在后台“设置 → 站点设置”开启“浏览器书签同步”，安装 [`browser-extension`](browser-extension/) 中的 Chrome/Edge 扩展并登录。扩展首页在已连接导航页时默认收起地址、账号和密码输入框，点击“修改登录信息”即可展开修改；会话过期或尚未连接时自动展开。之后新增网页书签时会在当前页面右上角显示分类悬窗，可在确认前编辑标题和 URL；点击扩展图标可展示或隐藏面板，点击面板外的网页区域也可收起。确认后再同步到所选一级或二级分类，并按默认图标策略保存 `https://favicon.im/<hostname>?larger=true` 图标候选。未确认的收藏保留在待同步队列，可在待同步列表中勾选、暂缓或手动删除；列表会动态标记已经不在浏览器收藏中的记录。扩展不按浏览器收藏夹文件夹创建导航分类，只做“浏览器 → 导航页”单向新增，不删除或反向覆盖导航页已有书签。已安装扩展的用户请按[扩展更新说明](browser-extension/README.md#更新已安装的扩展)重新加载扩展并刷新网页。
 
 ## 界面预览
 
@@ -114,10 +117,6 @@ cd CF-Navs/docker
 部署、反向代理、数据迁移、备份恢复与安全边界见
 [DOCKER_DEPLOY.md](docs/guides/DOCKER_DEPLOY.md)。
 
-> ⚠️ 2026-10-23 安全提示：2026-10-21 之前发布的预构建镜像含一个
-> Node.js 高危漏洞（已修复版本为 v24.22.1），在下一个正式版本镜像发布前，
-> 请按指南的方式 B 从源码构建部署，详见 [DOCKER_DEPLOY.md](docs/guides/DOCKER_DEPLOY.md)。
-
 CF-Navs 需要以下 Cloudflare 资源：
 
 | 资源 | 绑定名 | 用途 |
@@ -130,11 +129,12 @@ CF-Navs 需要以下 Cloudflare 资源：
 
 适合希望全程在浏览器中操作、不想安装本地工具的用户。Cloudflare 关联你的 GitHub Fork 后，会从 `main` 生产分支自动构建和部署；以后同步上游更新时，也请更新这个分支。
 
-#### 步骤 1：Fork 本仓库
+#### 步骤 1：Fork 本仓库并 Star
 
 [![Fork on GitHub](https://img.shields.io/badge/Fork-GitHub-181717?style=for-the-badge&logo=github)](https://github.com/lbjxr/CF-Navs/fork)
+[![Star this project on GitHub](https://img.shields.io/badge/%E2%AD%90_Star-FFC107?style=for-the-badge)](https://github.com/lbjxr/CF-Navs)
 
-点击上方 **"Fork on GitHub"** 按钮，并点上 ⭐ Star！
+点击上方 **Fork** 按钮派生本仓库；打开仓库主页后点右上角 **Star** 关注项目更新。
 
 #### 步骤 2：部署到 Cloudflare Workers
 
